@@ -1,68 +1,70 @@
 import axios from 'axios';
 import { SearchRequest, SearchResponse, SearchResult } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+// Microservices URLs
+const SEARCH_SERVICE_URL = import.meta.env.VITE_SEARCH_SERVICE_URL || 'http://localhost:5001/api';
+const STANDARDS_SERVICE_URL = import.meta.env.VITE_STANDARDS_SERVICE_URL || 'http://localhost:3001/api';
 
-// Mock data for development before backend is ready
-const MOCK_STANDARDS: SearchResult[] = [
-  {
-    id: '550e8400-e29b-41d4-a716-446655440001',
-    title: 'Blue Horizon',
-    composer: 'Miles Mock',
-    year: 1959,
-    key: 'C',
-    timeSignature: '4/4',
-    matchConfidence: 0.95,
-    matchPosition: 0,
-    intervalSequence: [2, 2, 1, 2, 2, 2, 1],
-    bookSource: 'Mock Real Book Vol 1',
-    pageNumber: 42,
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440005',
-    title: 'Sunset Boulevard',
-    composer: 'John Mock',
-    year: 1963,
-    key: 'Dm',
-    timeSignature: '4/4',
-    matchConfidence: 0.88,
-    matchPosition: 2,
-    intervalSequence: [2, 1, 2, 2, 1, 2, 2],
-    bookSource: 'Mock Real Book Vol 3',
-    pageNumber: 105,
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440003',
-    title: 'Midnight Train',
-    composer: 'Charlie Mock',
-    year: 1952,
-    key: 'F',
-    timeSignature: '4/4',
-    matchConfidence: 0.72,
-    matchPosition: 0,
-    intervalSequence: [4, -3, 2, 5, -7, 3, -2],
-    bookSource: 'Mock Real Book Vol 2',
-    pageNumber: 78,
-  },
-];
+// Backend API response types (C# Search Service)
+interface BackendSearchResult {
+  standard: {
+    id: string;
+    title: string;
+    composer: string | null;
+    year: number | null;
+    key: string | null;
+    time_signature: string;
+    interval_sequence: number[];
+    original_notes: string | null;
+    book_source: string | null;
+    page_number: number | null;
+  };
+  matchPosition: number;
+  matchLength: number;
+  confidence: number;
+}
+
+interface BackendSearchResponse {
+  success: boolean;
+  count: number;
+  executionTimeMs: number;
+  data: BackendSearchResult[];
+  error?: string | null;
+}
 
 class ApiService {
-  private useMockData = true; // Toggle this when backend is ready
 
   /**
    * Search for jazz standards by interval sequence
+   * Uses C# Search Service microservice
    */
   async searchByIntervals(request: SearchRequest): Promise<SearchResponse> {
-    if (this.useMockData) {
-      return this.mockSearch(request);
-    }
-
     try {
-      const response = await axios.post<SearchResponse>(
-        `${API_BASE_URL}/standards/search`,
-        request
+      const response = await axios.post<BackendSearchResponse>(
+        `${SEARCH_SERVICE_URL}/search`,
+        { intervals: request.intervals }
       );
-      return response.data;
+
+      // Transform backend response to frontend format
+      const results: SearchResult[] = response.data.data.map((item) => ({
+        id: item.standard.id,
+        title: item.standard.title,
+        composer: item.standard.composer || 'Unknown',
+        year: item.standard.year || undefined,
+        key: item.standard.key || undefined,
+        timeSignature: item.standard.time_signature,
+        matchConfidence: item.confidence,
+        matchPosition: item.matchPosition,
+        intervalSequence: item.standard.interval_sequence,
+        bookSource: item.standard.book_source || undefined,
+        pageNumber: item.standard.page_number || undefined,
+      }));
+
+      return {
+        results,
+        queryTime: response.data.executionTimeMs,
+        totalMatches: response.data.count,
+      };
     } catch (error) {
       console.error('Error searching standards:', error);
       throw error;
@@ -71,18 +73,28 @@ class ApiService {
 
   /**
    * Get all jazz standards (paginated)
+   * Uses Standards Service directly
    */
   async getAllStandards(page = 1, limit = 20): Promise<SearchResult[]> {
-    if (this.useMockData) {
-      return MOCK_STANDARDS;
-    }
-
     try {
-      const response = await axios.get<SearchResult[]>(
-        `${API_BASE_URL}/standards`,
+      const response = await axios.get<{ success: boolean; data: any[] }>(
+        `${STANDARDS_SERVICE_URL}/standards`,
         { params: { page, limit } }
       );
-      return response.data;
+
+      return response.data.data.map((standard) => ({
+        id: standard.id,
+        title: standard.title,
+        composer: standard.composer || 'Unknown',
+        year: standard.year || undefined,
+        key: standard.key || undefined,
+        timeSignature: standard.time_signature,
+        matchConfidence: 1.0,
+        matchPosition: 0,
+        intervalSequence: standard.interval_sequence,
+        bookSource: standard.book_source || undefined,
+        pageNumber: standard.page_number || undefined,
+      }));
     } catch (error) {
       console.error('Error fetching standards:', error);
       throw error;
@@ -91,90 +103,32 @@ class ApiService {
 
   /**
    * Get a single standard by ID
+   * Uses Standards Service directly
    */
   async getStandardById(id: string): Promise<SearchResult | null> {
-    if (this.useMockData) {
-      return MOCK_STANDARDS.find(s => s.id === id) || null;
-    }
-
     try {
-      const response = await axios.get<SearchResult>(
-        `${API_BASE_URL}/standards/${id}`
+      const response = await axios.get<{ success: boolean; data: any }>(
+        `${STANDARDS_SERVICE_URL}/standards/${id}`
       );
-      return response.data;
+
+      const standard = response.data.data;
+      return {
+        id: standard.id,
+        title: standard.title,
+        composer: standard.composer || 'Unknown',
+        year: standard.year || undefined,
+        key: standard.key || undefined,
+        timeSignature: standard.time_signature,
+        matchConfidence: 1.0,
+        matchPosition: 0,
+        intervalSequence: standard.interval_sequence,
+        bookSource: standard.book_source || undefined,
+        pageNumber: standard.page_number || undefined,
+      };
     } catch (error) {
       console.error('Error fetching standard:', error);
-      throw error;
+      return null;
     }
-  }
-
-  /**
-   * Mock search implementation for development
-   */
-  private async mockSearch(request: SearchRequest): Promise<SearchResponse> {
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 300));
-
-    const { intervals, tolerance = 0, maxResults = 10 } = request;
-
-    if (intervals.length === 0) {
-      return {
-        results: [],
-        queryTime: 50,
-        totalMatches: 0,
-      };
-    }
-
-    // Simple matching algorithm: check if query intervals are a subsequence
-    const matches = MOCK_STANDARDS.filter(standard => {
-      return this.findSubsequence(standard.intervalSequence, intervals, tolerance);
-    }).map(standard => {
-      // Calculate a simple confidence score based on sequence length match
-      const confidence = Math.min(0.95, 0.5 + (intervals.length / 10) * 0.45);
-      return {
-        ...standard,
-        matchConfidence: confidence,
-      };
-    });
-
-    // Sort by confidence and limit results
-    const sortedMatches = matches
-      .sort((a, b) => b.matchConfidence - a.matchConfidence)
-      .slice(0, maxResults);
-
-    return {
-      results: sortedMatches,
-      queryTime: Math.floor(Math.random() * 100) + 50,
-      totalMatches: matches.length,
-    };
-  }
-
-  /**
-   * Check if needle is a subsequence of haystack (with tolerance)
-   */
-  private findSubsequence(haystack: number[], needle: number[], tolerance: number): boolean {
-    if (needle.length > haystack.length) return false;
-
-    for (let i = 0; i <= haystack.length - needle.length; i++) {
-      let matches = true;
-      for (let j = 0; j < needle.length; j++) {
-        const diff = Math.abs(haystack[i + j] - needle[j]);
-        if (diff > tolerance) {
-          matches = false;
-          break;
-        }
-      }
-      if (matches) return true;
-    }
-
-    return false;
-  }
-
-  /**
-   * Enable or disable mock data mode
-   */
-  setMockMode(enabled: boolean) {
-    this.useMockData = enabled;
   }
 }
 

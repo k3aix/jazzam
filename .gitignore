@@ -64,3 +64,8 @@ obj/
 # Kubernetes
 kubeconfig
 *.kubeconfig
+
+# MIDI files and data
+midi-files/
+*.mid
+*.midi
