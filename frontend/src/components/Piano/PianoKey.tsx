@@ -41,26 +41,28 @@ const PianoKey: React.FC<PianoKeyProps> = ({
 
   // Styling based on key type (white/black) and state
   const baseClasses = keyData.type === 'white'
-    ? 'w-12 h-40 border-2 border-gray-800 rounded-b-lg relative'
-    : 'w-8 h-24 bg-gray-900 border-2 border-black rounded-b-lg absolute -ml-4 z-10';
+    ? 'w-12 h-40 border-2 border-gray-800 rounded-b-lg relative shadow-md'
+    : 'w-7 h-28 border-2 border-black rounded-b-lg shadow-lg';
 
   const whiteKeyColor = isPressed || isActive
-    ? 'bg-blue-300'
+    ? 'bg-gradient-to-b from-blue-400 to-blue-500 shadow-inner'
     : 'bg-white hover:bg-gray-100';
 
   const blackKeyColor = isPressed || isActive
-    ? 'bg-blue-600'
-    : 'bg-gray-900 hover:bg-gray-700';
+    ? 'bg-gradient-to-b from-blue-400 to-blue-600 shadow-inner'
+    : 'bg-gradient-to-b from-gray-800 to-gray-950 hover:from-gray-700 hover:to-gray-900';
 
   const colorClasses = keyData.type === 'white' ? whiteKeyColor : blackKeyColor;
 
-  const textColor = keyData.type === 'white'
+  const textColor = (isPressed || isActive) && keyData.type === 'white'
+    ? 'text-white text-xs font-bold'
+    : keyData.type === 'white'
     ? 'text-gray-600 text-xs'
-    : 'text-white text-xs';
+    : 'text-gray-300 text-[10px]';
 
   return (
     <div
-      className={`${baseClasses} ${colorClasses} cursor-pointer transition-colors duration-75 select-none flex items-end justify-center pb-2`}
+      className={`${baseClasses} ${colorClasses} cursor-pointer transition-all duration-150 select-none flex items-end justify-center pb-2`}
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseLeave}

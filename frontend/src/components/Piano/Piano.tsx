@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import PianoKey from './PianoKey';
 import { PianoKey as PianoKeyType, Note } from '../../types';
 import audioService from '../../services/audioService';
-import keyboardMapping from '../../services/keyboardMapping';
+import keyboardMapping, { KeyboardLayout } from '../../services/keyboardMapping';
 
 interface PianoProps {
   onMelodyChange: (notes: Note[], intervals: number[]) => void;
@@ -15,6 +15,8 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
   const [startTime, setStartTime] = useState(Date.now());
   const [audioInitialized, setAudioInitialized] = useState(false);
   const [currentOctave, setCurrentOctave] = useState(4);
+  const [keyboardLayout, setKeyboardLayout] = useState<KeyboardLayout>('QWERTY');
+  const [activeNotes, setActiveNotes] = useState<Set<string>>(new Set()); // Track currently playing notes for visual feedback
   const pressedKeys = useRef<Set<string>>(new Set()); // Track pressed keyboard keys
 
   // Generate 2 octaves of piano keys (C4 to B5 = 24 keys)
@@ -71,6 +73,9 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
     // Always play sound, regardless of recording state
     audioService.playNote(note, frequency); // No duration = sustain until release
 
+    // Add to active notes for visual feedback
+    setActiveNotes(prev => new Set(prev).add(note));
+
     // Only capture notes if recording
     if (isRecording) {
       const timestamp = Date.now() - startTime;
@@ -94,6 +99,13 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
   const handleNoteEnd = useCallback((note: string) => {
     // Stop the sound
     audioService.stopNote(note);
+
+    // Remove from active notes
+    setActiveNotes(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(note);
+      return newSet;
+    });
   }, []);
 
   const handleReset = () => {
@@ -101,6 +113,7 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
     setStartTime(Date.now()); // Reset timestamp
     onMelodyChange([], []);
     audioService.stopAll(); // Stop any playing notes
+    setActiveNotes(new Set()); // Clear active notes
   };
 
   const handleRecordingToggle = () => {
@@ -122,6 +135,11 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
     const newOctave = keyboardMapping.octaveDown();
     setCurrentOctave(newOctave);
   }, []);
+
+  const handleKeyboardLayoutChange = (layout: KeyboardLayout) => {
+    setKeyboardLayout(layout);
+    keyboardMapping.setLayout(layout);
+  };
 
   // Initialize audio on first user interaction
   useEffect(() => {
@@ -148,12 +166,12 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
       // Ignore if key is already pressed (prevent key repeat)
       if (pressedKeys.current.has(e.key)) return;
 
-      // Check for octave shift keys (Z = down, X = up)
-      if (e.key === 'z' || e.key === 'Z') {
+      // Check for octave shift keys (comma = down, period = up)
+      if (e.key === ',' || e.key === '<') {
         handleOctaveDown();
         return;
       }
-      if (e.key === 'x' || e.key === 'X') {
+      if (e.key === '.' || e.key === '>') {
         handleOctaveUp();
         return;
       }
@@ -196,6 +214,7 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
       // Stop all notes when unmounting
       pressedKeys.current.clear();
       audioService.stopAll();
+      setActiveNotes(new Set());
     };
   }, [handleNoteStart, handleNoteEnd, handleOctaveUp, handleOctaveDown, pianoKeys]);
 
@@ -213,7 +232,7 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
               keyData={key}
               onNoteStart={handleNoteStart}
               onNoteEnd={handleNoteEnd}
-              isActive={playedNotes.some(n => n.name === key.note)}
+              isActive={activeNotes.has(key.note)}
               keyboardKey={keyboardMapping.getKeyForNote(key.note)}
             />
           </div>
@@ -221,27 +240,20 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
 
         {/* Black keys positioned absolutely over white keys */}
         <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
-          {blackKeys.map((key, index) => {
-            // Position black keys between white keys
-            // C# is after C (position 1), D# is after D (position 2), etc.
-            const whiteKeyIndex = whiteKeys.findIndex(wk => {
-              const blackNote = key.note.slice(0, -1); // Remove octave
-              const whiteNote = wk.note.slice(0, -1);
-              return blackNote === whiteNote + '#';
-            });
-
-            // Calculate left position based on white key layout
+          {blackKeys.map((key) => {
+            // Calculate left position to place black keys between white keys
             const getLeftPosition = () => {
               const octave = parseInt(key.note.slice(-1));
               const note = key.note.slice(0, -1);
               const octaveOffset = (octave - 4) * 7; // 7 white keys per octave
 
+              // Position black keys in the upper middle between white keys
               const positions: { [key: string]: number } = {
-                'C#': 0.5,
-                'D#': 1.5,
-                'F#': 3.5,
-                'G#': 4.5,
-                'A#': 5.5,
+                'C#': 0.68,  // Between C and D
+                'D#': 1.68,  // Between D and E
+                'F#': 3.68,  // Between F and G
+                'G#': 4.68,  // Between G and A
+                'A#': 5.68,  // Between A and B
               };
 
               return (octaveOffset + (positions[note] || 0)) * 48; // 48px = width of white key
@@ -251,13 +263,13 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
               <div
                 key={key.note}
                 className="pointer-events-auto"
-                style={{ position: 'absolute', left: `${getLeftPosition()}px` }}
+                style={{ position: 'absolute', left: `${getLeftPosition()}px`, top: '0px' }}
               >
                 <PianoKey
                   keyData={key}
                   onNoteStart={handleNoteStart}
                   onNoteEnd={handleNoteEnd}
-                  isActive={playedNotes.some(n => n.name === key.note)}
+                  isActive={activeNotes.has(key.note)}
                   keyboardKey={keyboardMapping.getKeyForNote(key.note)}
                 />
               </div>
@@ -275,15 +287,29 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
         <p className="text-gray-600">
           {isRecording
             ? '🔴 Recording - Play your melody to identify it'
-            : 'Play freely - Click keys or use your keyboard (A-;)'}
+            : 'Play freely - Click keys or use your keyboard'}
         </p>
-        <div className="mt-2 flex items-center justify-center gap-4 text-sm">
-          <span className="text-blue-600 font-medium">
-            Current Octave: C{currentOctave}
-          </span>
-          <span className="text-gray-500">
-            Z/X to shift octaves
-          </span>
+        <div className="mt-3 flex items-center justify-center gap-6 text-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-gray-700 font-medium">Keyboard Layout:</span>
+            <select
+              value={keyboardLayout}
+              onChange={(e) => handleKeyboardLayoutChange(e.target.value as KeyboardLayout)}
+              className="px-3 py-1.5 border-2 border-gray-300 rounded-lg bg-white text-gray-700 font-medium hover:border-blue-400 focus:border-blue-500 focus:outline-none transition-colors cursor-pointer"
+            >
+              <option value="QWERTY">QWERTY (US/UK)</option>
+              <option value="QWERTZ">QWERTZ (German)</option>
+              <option value="AZERTY">AZERTY (French)</option>
+            </select>
+          </div>
+          <div className="border-l-2 border-gray-300 pl-6 flex items-center gap-4">
+            <span className="text-blue-600 font-medium">
+              Octave: C{currentOctave}
+            </span>
+            <span className="text-gray-500">
+              , / . to shift
+            </span>
+          </div>
         </div>
       </div>
 
@@ -301,7 +327,7 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
             className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-semibold"
             disabled={currentOctave <= 2}
           >
-            ← Octave Down (Z)
+            ← Octave Down (,)
           </button>
           <span className="text-lg font-bold text-gray-700 min-w-20 text-center">
             C{currentOctave} - B{currentOctave}
@@ -311,7 +337,7 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
             className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-semibold"
             disabled={currentOctave >= 6}
           >
-            Octave Up (X) →
+            Octave Up (.) →
           </button>
         </div>
 

@@ -54,6 +54,7 @@ obj/
 *.dll
 *.exe
 *.pdb
+backend/search-service/dotnet-run.sh
 
 # Terraform
 .terraform/
