@@ -1,3 +1,4 @@
+using SearchService.Models;
 using SearchService.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -7,6 +8,10 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
 {
     serverOptions.ListenLocalhost(5001);
 });
+
+// Configure search algorithm settings
+builder.Services.Configure<SearchAlgorithmConfig>(
+    builder.Configuration.GetSection("SearchAlgorithm"));
 
 // Add services to the container
 builder.Services.AddControllers();
@@ -21,7 +26,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:3000")
+        policy.WithOrigins("http://localhost:3000", "http://localhost:3002")
               .AllowAnyHeader()
               .AllowAnyMethod();
     });

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import PianoKey from './PianoKey';
 import { PianoKey as PianoKeyType, Note } from '../../types';
 import audioService from '../../services/audioService';
@@ -18,9 +18,10 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
   const [keyboardLayout, setKeyboardLayout] = useState<KeyboardLayout>('QWERTY');
   const [activeNotes, setActiveNotes] = useState<Set<string>>(new Set()); // Track currently playing notes for visual feedback
   const pressedKeys = useRef<Set<string>>(new Set()); // Track pressed keyboard keys
+  const playedNotesRef = useRef<Note[]>([]); // Keep ref to avoid stale closures
 
-  // Generate 2 octaves of piano keys (C4 to B5 = 24 keys)
-  const generatePianoKeys = (): PianoKeyType[] => {
+  // Memoize piano keys generation - only create once
+  const pianoKeys = useMemo((): PianoKeyType[] => {
     const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
     const keys: PianoKeyType[] = [];
 
@@ -47,9 +48,7 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
     }
 
     return keys;
-  };
-
-  const pianoKeys = generatePianoKeys();
+  }, []); // Empty dependency array - only generate once
 
   // Calculate intervals from notes (semitone differences)
   const calculateIntervals = (notes: Note[]): number[] => {
@@ -69,12 +68,21 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
     return intervals;
   };
 
+  // Sync playedNotes to ref to avoid stale closures
+  useEffect(() => {
+    playedNotesRef.current = playedNotes;
+  }, [playedNotes]);
+
   const handleNoteStart = useCallback((note: string, frequency: number) => {
-    // Always play sound, regardless of recording state
-    audioService.playNote(note, frequency); // No duration = sustain until release
+    // Always play sound immediately - no state updates needed
+    audioService.playNote(note, frequency);
 
     // Add to active notes for visual feedback
-    setActiveNotes(prev => new Set(prev).add(note));
+    setActiveNotes(prev => {
+      const newSet = new Set(prev);
+      newSet.add(note);
+      return newSet;
+    });
 
     // Only capture notes if recording
     if (isRecording) {
@@ -88,13 +96,14 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
         pitchClass: note.slice(0, -1)
       };
 
-      const updatedNotes = [...playedNotes, newNote];
-      setPlayedNotes(updatedNotes);
-
-      const intervals = calculateIntervals(updatedNotes);
-      onMelodyChange(updatedNotes, intervals);
+      setPlayedNotes(current => {
+        const updatedNotes = [...current, newNote];
+        const intervals = calculateIntervals(updatedNotes);
+        onMelodyChange(updatedNotes, intervals);
+        return updatedNotes;
+      });
     }
-  }, [playedNotes, startTime, onMelodyChange, isRecording]);
+  }, [startTime, onMelodyChange, isRecording, calculateIntervals]);
 
   const handleNoteEnd = useCallback((note: string) => {
     // Stop the sound

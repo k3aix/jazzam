@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Options;
 using SearchService.Models;
 
 namespace SearchService.Services;
@@ -7,17 +8,16 @@ public class SearchService : ISearchService
 {
     private readonly IStandardsClient _standardsClient;
     private readonly ILogger<SearchService> _logger;
+    private readonly SearchAlgorithmConfig _config;
 
-    // Minimum intervals required for a valid search (prevents short, unreliable queries)
-    private const int MinimumIntervals = 5;
-
-    // Maximum allowed error rate (20% of query length)
-    private const double MaxErrorRate = 0.2;
-
-    public SearchService(IStandardsClient standardsClient, ILogger<SearchService> logger)
+    public SearchService(
+        IStandardsClient standardsClient,
+        ILogger<SearchService> logger,
+        IOptions<SearchAlgorithmConfig> config)
     {
         _standardsClient = standardsClient;
         _logger = logger;
+        _config = config.Value;
     }
 
     public async Task<SearchResponse> SearchByIntervalsAsync(SearchRequest request)
@@ -33,12 +33,12 @@ public class SearchService : ISearchService
             );
 
             // Validate minimum interval length
-            if (request.Intervals.Length < MinimumIntervals)
+            if (request.Intervals.Length < _config.MinimumIntervals)
             {
                 _logger.LogWarning(
                     "Query too short: {Count} intervals (minimum: {Min})",
                     request.Intervals.Length,
-                    MinimumIntervals
+                    _config.MinimumIntervals
                 );
 
                 return new SearchResponse
@@ -47,7 +47,7 @@ public class SearchService : ISearchService
                     Count = 0,
                     ExecutionTimeMs = stopwatch.ElapsedMilliseconds,
                     Data = new List<SearchResult>(),
-                    Error = $"Query must contain at least {MinimumIntervals} intervals for reliable matching"
+                    Error = $"Query must contain at least {_config.MinimumIntervals} intervals for reliable matching"
                 };
             }
 
@@ -60,7 +60,11 @@ public class SearchService : ISearchService
 
             foreach (var standard in allStandards)
             {
-                var match = FindBestMatch(standard.IntervalSequence, request.Intervals);
+                var match = FindBestMatch(
+                    standard.IntervalSequence,
+                    request.Intervals,
+                    request.ErrorTolerance
+                );
 
                 if (match != null)
                 {
@@ -133,9 +137,10 @@ public class SearchService : ISearchService
 
     /// <summary>
     /// Find the best matching subsequence using fuzzy matching with error tolerance.
-    /// Allows for small mistakes in user input (wrong notes, extra notes, missing notes).
+    /// Allows for mistakes in user input (wrong notes, extra notes, missing notes).
+    /// Searches through the ENTIRE song, treating all positions equally.
     /// </summary>
-    private FuzzyMatch? FindBestMatch(int[] haystack, int[] needle)
+    private FuzzyMatch? FindBestMatch(int[] haystack, int[] needle, double errorTolerance)
     {
         if (needle.Length > haystack.Length)
         {
@@ -143,24 +148,38 @@ public class SearchService : ISearchService
         }
 
         FuzzyMatch? bestMatch = null;
-        int maxAllowedErrors = (int)Math.Ceiling(needle.Length * MaxErrorRate);
+        int maxAllowedErrors = (int)Math.Ceiling(needle.Length * errorTolerance);
+
+        _logger.LogDebug(
+            "Searching with error tolerance {Tolerance:F2} (max {MaxErrors} errors for {Length} intervals)",
+            errorTolerance,
+            maxAllowedErrors,
+            needle.Length
+        );
 
         // Scan through the standard's interval sequence
+        // This allows finding melodies anywhere in the song, not just at the beginning
         for (int i = 0; i <= haystack.Length - needle.Length; i++)
         {
-            // Calculate Levenshtein distance for this window
-            var errors = CalculateLevenshteinDistance(
-                haystack.Skip(i).Take(needle.Length + maxAllowedErrors).ToArray(),
-                needle
-            );
+            // Extract exact-length window from haystack for fair comparison
+            var window = haystack.Skip(i).Take(needle.Length).ToArray();
+
+            // Calculate Levenshtein distance between same-length sequences
+            var errors = CalculateLevenshteinDistance(window, needle);
 
             if (errors <= maxAllowedErrors)
             {
-                int matchLength = Math.Min(needle.Length, haystack.Length - i);
+                int matchLength = needle.Length;
 
-                // Weight matches at the beginning of the melody higher
-                double positionWeight = i == 0 ? 1.1 : (i < 5 ? 1.05 : 1.0);
-                double score = (1.0 - (double)errors / needle.Length) * positionWeight;
+                // Score based purely on accuracy (no position bias)
+                double score = 1.0 - ((double)errors / needle.Length);
+
+                // Apply position bias only if enabled in config
+                if (_config.EnablePositionBias)
+                {
+                    double positionWeight = i == 0 ? 1.1 : (i < 5 ? 1.05 : 1.0);
+                    score *= positionWeight;
+                }
 
                 if (bestMatch == null || score > bestMatch.Score)
                 {
@@ -216,28 +235,33 @@ public class SearchService : ISearchService
 
     /// <summary>
     /// Calculate confidence score based on match quality with multiple factors.
+    /// Position-neutral scoring - treats all positions in the song equally.
     /// </summary>
     private double CalculateConfidence(FuzzyMatch match, int queryLength, int standardLength)
     {
-        // Base confidence: inverse of error rate
+        // Base confidence: inverse of error rate (primary factor)
         double accuracyScore = 1.0 - ((double)match.ErrorCount / queryLength);
 
         // Length factor: longer matches are more reliable
-        double lengthFactor = Math.Min(queryLength / (double)MinimumIntervals, 1.0);
-
-        // Position bonus: matches at the beginning of a melody are more significant
-        double positionBonus = match.Position == 0 ? 0.15 :
-                              match.Position < 5 ? 0.10 :
-                              match.Position < 10 ? 0.05 : 0.0;
+        double lengthFactor = Math.Min(queryLength / (double)_config.MinimumIntervals, 1.0);
 
         // Exact match bonus
-        double exactBonus = match.ErrorCount == 0 ? 0.1 : 0.0;
+        double exactBonus = match.ErrorCount == 0 ? 0.15 : 0.0;
 
-        // Combined confidence
-        double confidence = (accuracyScore * 0.6) + // 60% weight on accuracy
-                           (lengthFactor * 0.2) +   // 20% weight on length
-                           positionBonus +          // Up to 15% position bonus
-                           exactBonus;              // 10% exact match bonus
+        // Position bonus: only if enabled in configuration
+        double positionBonus = 0.0;
+        if (_config.EnablePositionBias)
+        {
+            positionBonus = match.Position == 0 ? 0.15 :
+                           match.Position < 5 ? 0.10 :
+                           match.Position < 10 ? 0.05 : 0.0;
+        }
+
+        // Combined confidence (position-neutral by default)
+        double confidence = (accuracyScore * 0.70) + // 70% weight on accuracy
+                           (lengthFactor * 0.15) +   // 15% weight on length
+                           exactBonus +              // 15% exact match bonus
+                           positionBonus;            // 0-15% position bonus (if enabled)
 
         // Cap at 1.0 and ensure minimum of 0.0
         confidence = Math.Max(0.0, Math.Min(1.0, confidence));
