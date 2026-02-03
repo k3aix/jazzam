@@ -7,6 +7,7 @@ interface MidiFileInfo {
   filename: string;
   fullPath: string;
   title: string;
+  bookSource: string;
 }
 
 async function main() {
@@ -23,24 +24,41 @@ async function main() {
     process.exit(1);
   }
 
-  // Get all MIDI files
-  const files = fs.readdirSync(midiPath)
-    .filter(file => file.toLowerCase().endsWith('.mid') || file.toLowerCase().endsWith('.midi'));
+  // Get all MIDI files from subfolders (book sources)
+  const midiFiles: MidiFileInfo[] = [];
+  const subfolders = fs.readdirSync(midiPath, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory());
 
-  if (files.length === 0) {
-    console.log('❌ No MIDI files found in the folder');
+  if (subfolders.length === 0) {
+    console.log('❌ No book source subfolders found in the standards folder');
+    console.log('   Please organize MIDI files into subfolders (e.g., real-book-1/)');
     process.exit(0);
   }
 
-  const midiFiles: MidiFileInfo[] = files.map(filename => ({
-    filename,
-    fullPath: path.join(midiPath, filename),
-    title: capitalizeTitle(filename.replace(/\.(mid|midi)$/i, ''))
-  }));
+  for (const subfolder of subfolders) {
+    const bookSource = subfolder.name;
+    const subfolderPath = path.join(midiPath, bookSource);
+    const files = fs.readdirSync(subfolderPath)
+      .filter(file => file.toLowerCase().endsWith('.mid') || file.toLowerCase().endsWith('.midi'));
 
-  console.log(`📄 Found ${midiFiles.length} MIDI file(s):\n`);
+    for (const filename of files) {
+      midiFiles.push({
+        filename,
+        fullPath: path.join(subfolderPath, filename),
+        title: capitalizeTitle(filename.replace(/\.(mid|midi)$/i, '')),
+        bookSource
+      });
+    }
+  }
+
+  if (midiFiles.length === 0) {
+    console.log('❌ No MIDI files found in any subfolder');
+    process.exit(0);
+  }
+
+  console.log(`📄 Found ${midiFiles.length} MIDI file(s) across ${subfolders.length} book source(s):\n`);
   midiFiles.forEach((file, index) => {
-    console.log(`   ${index + 1}. ${file.filename} → "${file.title}"`);
+    console.log(`   ${index + 1}. [${file.bookSource}] ${file.filename} → "${file.title}"`);
   });
 
   // Get existing standards from database
@@ -61,7 +79,7 @@ async function main() {
 
   console.log(`\n🆕 Found ${newFiles.length} new file(s) to import:\n`);
   newFiles.forEach((file, index) => {
-    console.log(`   ${index + 1}. ${file.title}`);
+    console.log(`   ${index + 1}. [${file.bookSource}] ${file.title}`);
   });
 
   // Process each new file
@@ -93,17 +111,18 @@ async function main() {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           id,
-          melody.title,
+          file.title,
           composer,
           year,
           key,
           '4/4',
           melody.intervalSequence,
-          'Real Book'
+          file.bookSource
         ]
       );
 
       console.log(`✅ Imported successfully!`);
+      console.log(`   - Book source: ${file.bookSource}`);
       console.log(`   - Notes: ${melody.notes.length}`);
       console.log(`   - Intervals: ${melody.intervalSequence.length}`);
       console.log(`   - First intervals: [${melody.intervalSequence.slice(0, 8).join(', ')}...]`);

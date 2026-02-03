@@ -54,6 +54,22 @@ This folder contains detailed documentation for the Jazz Melody Finder project, 
 - Keyboard mapping service
 - Usage examples and tips
 
+### Phase 4: Backend Services
+
+**[07-MIDI_IMPORT_GUIDE.md](07-MIDI_IMPORT_GUIDE.md)**
+- MIDI file parsing and import pipeline
+- Subfolder-based book source organization
+- Batch import script usage
+- File naming conventions
+- Troubleshooting guide
+
+**[08-SEARCH_ALGORITHM.md](08-SEARCH_ALGORITHM.md)**
+- Fuzzy matching with Levenshtein distance
+- Confidence scoring formula
+- Minimum interval requirements
+- Error tolerance settings
+- Real-world examples and tips
+
 ## Quick Reference
 
 ### For New Users
@@ -69,56 +85,56 @@ Read **[02-PROJECT_SUMMARY.md](02-PROJECT_SUMMARY.md)** for complete technical o
 
 ## Feature Timeline
 
-### Day 1: Foundation
+### Phase 1: Foundation
 1. ✅ Project structure created
 2. ✅ React + TypeScript + Vite setup
 3. ✅ Database schema designed
 4. ✅ Virtual piano component built
-5. ✅ Mock data and API service
 
-### Day 1: Audio Implementation
-6. ✅ Web Audio API integration
-7. ✅ Recording mode workflow
-8. ✅ Simple sine wave sound
+### Phase 1: Audio Implementation
+5. ✅ Web Audio API integration
+6. ✅ Recording mode workflow
+7. ✅ Harmonic synthesis (5 partials)
+8. ✅ Press-and-hold duration control
+9. ✅ Monophonic mode
+10. ✅ Piano-like ADSR envelope
 
-### Day 1: Enhanced Audio
-9. ✅ Harmonic synthesis (5 partials)
-10. ✅ Press-and-hold duration control
-11. ✅ Monophonic mode
-12. ✅ Piano-like ADSR envelope
+### Phase 1: Input Expansion
+11. ✅ PC keyboard mapping
+12. ✅ Octave shifting
+13. ✅ Visual keyboard shortcuts
 
-### Day 1: Input Expansion
-13. ✅ PC keyboard mapping
-14. ✅ Octave shifting
-15. ✅ Visual keyboard shortcuts
-16. ✅ Complete documentation
+### Phase 2: Backend Services
+14. ✅ Standards Service (TypeScript/Express)
+15. ✅ Search Service with fuzzy matching
+16. ✅ MIDI file parser
+17. ✅ Batch import pipeline
+18. ✅ Subfolder-based book source organization
+19. ✅ 69 jazz standards from Real Book Vol. 1
+20. ✅ Automated test suite
 
 ## Project Stats
 
-- **Total Files Created**: 25+ files
-- **Lines of Code**: ~2,500 lines
-- **Documentation Pages**: 6 guides
-- **Features Implemented**: 15+ features
-- **Technologies Used**: 8 (React, TypeScript, Vite, TailwindCSS, Web Audio API, Docker, PostgreSQL, Redis)
+- **Total Files Created**: 40+ files
+- **Lines of Code**: ~4,000 lines
+- **Documentation Pages**: 8 guides
+- **Features Implemented**: 20+ features
+- **Jazz Standards**: 69 from Real Book Vol. 1
+- **Technologies Used**: 10 (React, TypeScript, Vite, TailwindCSS, Web Audio API, Express, Docker, PostgreSQL, MIDI parsing, Levenshtein algorithm)
 
 ## What's Next?
 
-### Phase 2: Backend Development
-- Build Standards Service (TypeScript/Node.js)
-- Connect to PostgreSQL database
-- Implement real search endpoint
-- Connect frontend to backend
-
-### Phase 3: C# Microservices
-- Melody Service for interval conversion
-- Search Service with fuzzy matching
-- Redis caching integration
-
-### Phase 4: DevOps
+### Phase 3: DevOps
 - Docker containerization
 - Kubernetes deployment
 - AWS infrastructure with Terraform
 - CI/CD pipeline
+
+### Future Enhancements
+- Add more jazz standards (Real Book Vol. 2, 3)
+- Redis caching for search performance
+- Rhythm weighting in search algorithm
+- User accounts and favorites
 
 See the main [README.md](../README.md) for the complete roadmap.
 

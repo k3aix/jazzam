@@ -52,19 +52,19 @@ jazz-melody-finder/
 │   │   └── types/              # TypeScript interfaces
 │   └── package.json
 │
-├── services/
-│   ├── melody-service/         # C# service
-│   ├── search-service/         # C# service
-│   └── standards-service/      # TypeScript service
+├── backend/
+│   ├── standards-service/      # TypeScript - CRUD & MIDI import
+│   └── search-service/         # TypeScript - Fuzzy search algorithm
 │
 ├── database/
-│   ├── migrations/             # SQL schema
-│   └── seeds/                  # Mock data
+│   └── migrations/             # SQL schema
 │
-├── infrastructure/
-│   ├── kubernetes/             # K8s manifests
-│   └── terraform/              # AWS IaC
+├── midi-files/
+│   └── standards/              # MIDI files organized by book source
+│       └── real-book-1/        # Real Book Vol. 1 standards
 │
+├── tests/                      # Automated tests
+├── docs/                       # Documentation
 └── docker-compose.yml          # Local development
 ```
 
@@ -254,19 +254,20 @@ Response:
 
 ## Learning Objectives
 
-### Phase 1 (Current)
+### Phase 1 (Complete)
 - [x] React + TypeScript fundamentals
 - [x] Component design and state management
 - [x] API integration patterns
 - [x] Docker Compose for local dev
 
-### Phase 2 (Next)
-- [ ] C# / .NET Web API development
-- [ ] TypeScript backend with Express
-- [ ] PostgreSQL schema design
-- [ ] Redis caching strategies
+### Phase 2 (Complete)
+- [x] TypeScript backend with Express
+- [x] PostgreSQL schema design
+- [x] MIDI file parsing and import
+- [x] Fuzzy search algorithm (Levenshtein distance)
+- [x] 69 jazz standards from Real Book Vol. 1
 
-### Phase 3 (Later)
+### Phase 3 (Future)
 - [ ] Docker containerization
 - [ ] Kubernetes deployment
 - [ ] Terraform infrastructure as code
@@ -283,6 +284,8 @@ Detailed guides are available in the `docs/` folder:
 4. **[Audio & Recording](docs/04-AUDIO_AND_RECORDING.md)** - Real-time audio and recording mode features
 5. **[Piano Sound Update](docs/05-PIANO_SOUND_UPDATE.md)** - Enhanced piano sound with harmonics
 6. **[Keyboard Input](docs/06-KEYBOARD_INPUT.md)** - PC keyboard control documentation
+7. **[MIDI Import Guide](docs/07-MIDI_IMPORT_GUIDE.md)** - Importing jazz standards from MIDI files
+8. **[Search Algorithm](docs/08-SEARCH_ALGORITHM.md)** - Fuzzy matching and confidence scoring
 
 ## Next Steps
 
@@ -315,16 +318,16 @@ MIT License - Feel free to use this project for learning purposes.
 
 ---
 
-**Status**: Phase 1 Complete - Frontend with audio playback and recording mode ✅
+**Status**: Phase 2 Complete - Full-stack melody recognition working
 
 **Latest Updates**:
-- ✅ Web Audio API for real-time piano sound
-- ✅ Recording mode workflow (free play → record → search)
-- ✅ PC keyboard input (A-; keys + octave shifting with Z/X)
-- ✅ Harmonic synthesis (5 partials for realistic piano sound)
-- ✅ Monophonic mode (one note at a time)
-- ✅ Press-and-hold duration control
+- Backend services (Standards & Search) operational
+- 69 jazz standards imported from Real Book Vol. 1
+- MIDI import pipeline with subfolder-based organization
+- Fuzzy search with Levenshtein distance matching
+- Confidence scoring system (accuracy, position, exact match bonuses)
+- Automated test suite
 
 See [documentation](docs/) for detailed feature guides.
 
-**Next Milestone**: Build Standards Service (TypeScript) and connect to PostgreSQL
+**Next Milestone**: Docker containerization and Kubernetes deployment

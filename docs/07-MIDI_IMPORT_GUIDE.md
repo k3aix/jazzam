@@ -22,13 +22,34 @@ npm run import-midi ../../midi-files/standards
 
 The import system:
 
-1. **Scans** the `midi-files/standards` folder for MIDI files
-2. **Checks** the database for existing standards (by title)
-3. **Skips** files that are already imported
-4. **Parses** each new MIDI file to extract:
+1. **Scans** the `midi-files/standards` folder for **subfolders** (book sources)
+2. **Reads** MIDI files from each subfolder (e.g., `real-book-1/`)
+3. **Sets book_source** from the subfolder name automatically
+4. **Checks** the database for existing standards (by title)
+5. **Skips** files that are already imported
+6. **Parses** each new MIDI file to extract:
    - Melody notes from the most melodic track
    - Interval sequence (semitone differences between consecutive notes)
-5. **Inserts** the interval sequence into the database
+7. **Inserts** the interval sequence with the book source into the database
+
+### Folder Organization
+
+MIDI files must be organized in subfolders by book source:
+
+```
+midi-files/
+└── standards/
+    ├── real-book-1/           # Real Book Vol. 1
+    │   ├── autumn-leaves.mid
+    │   ├── blue-monk.mid
+    │   └── ...
+    ├── real-book-2/           # Real Book Vol. 2 (future)
+    │   └── ...
+    └── other-source/          # Any other collection
+        └── ...
+```
+
+The **subfolder name** becomes the `book_source` value in the database.
 
 ### What Gets Stored
 
@@ -37,7 +58,7 @@ For each jazz standard:
 - **Composer**: Extracted from filename pattern (if available)
 - **Year**: Extracted from filename pattern (if available)
 - **Interval Sequence**: Array of semitone differences
-- **Metadata**: Key, time signature, book source
+- **Book Source**: Automatically set from subfolder name (e.g., `real-book-1`)
 
 **Important**: Only interval sequences are stored, **NOT** the original note names. This saves space and allows transposition-independent searching.
 
@@ -90,22 +111,23 @@ Output:
 ============================================================
 📁 Scanning folder: /Users/you/github/website/midi-files/standards
 
-📄 Found 7 MIDI file(s):
-   1. airegin.mid → "Airegin"
-   2. blue-monk.mid → "Blue Monk"
+📄 Found 7 MIDI file(s) across 1 book source(s):
+   1. [real-book-1] airegin.mid → "Airegin"
+   2. [real-book-1] blue-monk.mid → "Blue Monk"
    ...
 
 📊 Checking database for existing standards...
    Database has 2 standard(s)
 
 🆕 Found 5 new file(s) to import:
-   1. Blue Monk
-   2. Autumn Leaves
+   1. [real-book-1] Blue Monk
+   2. [real-book-1] Autumn Leaves
    ...
 
 [1/5] Processing: Blue Monk
 ------------------------------------------------------------
 ✅ Imported successfully!
+   - Book source: real-book-1
    - Notes: 55
    - Intervals: 54
    - First intervals: [1, 1, 1, 2, 1, 1, 1, -5...]
@@ -137,13 +159,22 @@ docker exec jazz-postgres psql -U jazzuser -d jazz_standards \
 docker-compose up -d postgres
 ```
 
+### No Subfolders Found
+
+```
+❌ No book source subfolders found in the standards folder
+   Please organize MIDI files into subfolders (e.g., real-book-1/)
+```
+
+**Solution**: Create a subfolder (e.g., `midi-files/standards/real-book-1/`) and place MIDI files inside it.
+
 ### No MIDI Files Found
 
 ```
-❌ No MIDI files found in the folder
+❌ No MIDI files found in any subfolder
 ```
 
-**Solution**: Add `.mid` files to `midi-files/standards/` folder
+**Solution**: Add `.mid` files to a subfolder in `midi-files/standards/`
 
 ### Duplicate Detection
 
