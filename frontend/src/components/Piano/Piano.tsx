@@ -3,6 +3,7 @@ import PianoKey from './PianoKey';
 import { PianoKey as PianoKeyType, Note } from '../../types';
 import audioService from '../../services/audioService';
 import keyboardMapping, { KeyboardLayout } from '../../services/keyboardMapping';
+import loggerService from '../../services/loggerService';
 
 interface PianoProps {
   onMelodyChange: (notes: Note[], intervals: number[]) => void;
@@ -76,6 +77,9 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
   const handleNoteStart = useCallback((note: string, frequency: number) => {
     // Always play sound immediately - no state updates needed
     audioService.playNote(note, frequency);
+
+    // Log the note
+    loggerService.logNote(note, frequency, isRecording);
 
     // Add to active notes for visual feedback
     setActiveNotes(prev => {
@@ -156,6 +160,7 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
       if (!audioInitialized) {
         audioService.initialize();
         setAudioInitialized(true);
+        loggerService.logAudioInit(true);
       }
     };
 

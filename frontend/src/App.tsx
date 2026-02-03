@@ -1,8 +1,10 @@
 import { useState, useCallback, useEffect } from 'react';
 import Piano from './components/Piano/Piano';
 import ResultsList from './components/SearchResults/ResultsList';
+import LoggerConsole from './components/LoggerConsole/LoggerConsole';
 import { Note, SearchResult } from './types';
 import apiService from './services/api';
+import loggerService from './services/loggerService';
 
 function App() {
   const [currentNotes, setCurrentNotes] = useState<Note[]>([]);
@@ -12,10 +14,14 @@ function App() {
   const [queryTime, setQueryTime] = useState<number | undefined>();
   const [totalMatches, setTotalMatches] = useState<number | undefined>();
   const [isRecording, setIsRecording] = useState(false);
+  const [isConsoleOpen, setIsConsoleOpen] = useState(true);
 
   const handleMelodyChange = useCallback((notes: Note[], intervals: number[]) => {
     setCurrentNotes(notes);
     setCurrentIntervals(intervals);
+    if (intervals.length > 0) {
+      loggerService.logIntervals(intervals, notes.length);
+    }
   }, []);
 
   // Auto-search when intervals change while recording (with debounce)
@@ -35,7 +41,9 @@ function App() {
   }, [currentIntervals, isRecording]);
 
   const handleRecordingToggle = useCallback(() => {
-    setIsRecording(prev => !prev);
+    const newRecordingState = !isRecording;
+    setIsRecording(newRecordingState);
+    loggerService.logRecordingState(newRecordingState);
     if (isRecording) {
       // Stopped recording - do final search if we have notes
       if (currentIntervals.length >= 2) {
@@ -50,6 +58,7 @@ function App() {
     }
 
     setIsSearching(true);
+    loggerService.logSearchRequest(currentIntervals);
 
     try {
       const response = await apiService.searchByIntervals({
@@ -61,8 +70,24 @@ function App() {
       setSearchResults(response.results);
       setQueryTime(response.queryTime);
       setTotalMatches(response.totalMatches);
+
+      // Log search results
+      loggerService.logSearchResponse({
+        intervals: currentIntervals,
+        queryTime: response.queryTime,
+        totalMatches: response.totalMatches,
+        results: response.results.map(r => ({
+          title: r.title,
+          confidence: r.matchConfidence,
+          matchPosition: r.matchPosition,
+        })),
+      });
     } catch (error) {
       console.error('Search failed:', error);
+      loggerService.logSearchResponse({
+        intervals: currentIntervals,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
       setSearchResults([]);
     } finally {
       setIsSearching(false);
@@ -70,7 +95,7 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className={`min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 ${isConsoleOpen ? 'pb-80' : 'pb-16'}`}>
       {/* Header */}
       <header className="bg-white shadow-sm border-b-2 border-blue-200">
         <div className="max-w-7xl mx-auto px-4 py-6">
@@ -189,6 +214,12 @@ function App() {
           </p>
         </div>
       </footer>
+
+      {/* Logger Console */}
+      <LoggerConsole
+        isOpen={isConsoleOpen}
+        onToggle={() => setIsConsoleOpen(prev => !prev)}
+      />
     </div>
   );
 }

@@ -1,0 +1,4 @@
+#!/bin/bash
+# Recognition Test Runner
+cd "$(dirname "$0")"
+npx ts-node src/index.ts "$@"

@@ -1,0 +1,28 @@
+{
+  "name": "recognition-tests",
+  "version": "1.0.0",
+  "description": "Automated recognition tests for Jazz Melody Finder",
+  "main": "dist/index.js",
+  "bin": {
+    "rectest": "./bin/rectest.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "ts-node src/index.ts",
+    "test:quick": "ts-node src/index.ts --length 5 --limit 10",
+    "test:full": "ts-node src/index.ts --length 8 --errors 0",
+    "test:with-errors": "ts-node src/index.ts --length 8 --errors 2 --error-type both"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "chalk": "^4.1.2",
+    "commander": "^12.0.0",
+    "pg": "^8.11.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/pg": "^8.10.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
