@@ -20,24 +20,20 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
   const [activeNotes, setActiveNotes] = useState<Set<string>>(new Set()); // Track currently playing notes for visual feedback
   const pressedKeys = useRef<Set<string>>(new Set()); // Track pressed keyboard keys
   const playedNotesRef = useRef<Note[]>([]); // Keep ref to avoid stale closures
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Memoize piano keys generation - only create once
+  // Generate full piano range (C2 to B6 = 5 octaves, 60 notes)
   const pianoKeys = useMemo((): PianoKeyType[] => {
     const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
     const keys: PianoKeyType[] = [];
 
-    // C4 (middle C) starts at MIDI note 60
-    const startMidiNumber = 60;
-
-    // Generate 2 octaves (24 notes)
-    for (let i = 0; i < 24; i++) {
-      const midiNumber = startMidiNumber + i;
+    // C2 = MIDI 36, B6 = MIDI 95 → 5 octaves
+    for (let midiNumber = 36; midiNumber <= 95; midiNumber++) {
       const octave = Math.floor(midiNumber / 12) - 1;
       const noteIndex = midiNumber % 12;
       const noteName = notes[noteIndex];
       const fullNote = `${noteName}${octave}`;
 
-      // Calculate frequency: f = 440 * 2^((n-69)/12) where n is MIDI number
       const frequency = 440 * Math.pow(2, (midiNumber - 69) / 12);
 
       keys.push({
@@ -49,7 +45,7 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
     }
 
     return keys;
-  }, []); // Empty dependency array - only generate once
+  }, []);
 
   // Calculate intervals from notes (semitone differences)
   const calculateIntervals = (notes: Note[]): number[] => {
@@ -232,6 +228,19 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
     };
   }, [handleNoteStart, handleNoteEnd, handleOctaveUp, handleOctaveDown, pianoKeys]);
 
+  // The lowest octave in the piano (C2)
+  const startOctave = 2;
+
+  // Scroll to middle C on mount
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    // Middle C (C4) is at octave index 2 (octaves 2,3,4), so 2*7 = 14 white keys from left
+    const middleCWhiteKeyIndex = (4 - startOctave) * 7;
+    const scrollTarget = middleCWhiteKeyIndex * 48 - container.clientWidth / 2 + 48;
+    container.scrollLeft = Math.max(0, scrollTarget);
+  }, []);
+
   // Render keys in proper piano layout
   const renderKeys = () => {
     const whiteKeys = pianoKeys.filter(k => k.type === 'white');
@@ -255,29 +264,25 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
         {/* Black keys positioned absolutely over white keys */}
         <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
           {blackKeys.map((key) => {
-            // Calculate left position to place black keys between white keys
-            const getLeftPosition = () => {
-              const octave = parseInt(key.note.slice(-1));
-              const note = key.note.slice(0, -1);
-              const octaveOffset = (octave - 4) * 7; // 7 white keys per octave
+            const octave = parseInt(key.note.slice(-1));
+            const note = key.note.slice(0, -1);
+            const octaveOffset = (octave - startOctave) * 7; // 7 white keys per octave
 
-              // Position black keys in the upper middle between white keys
-              const positions: { [key: string]: number } = {
-                'C#': 0.68,  // Between C and D
-                'D#': 1.68,  // Between D and E
-                'F#': 3.68,  // Between F and G
-                'G#': 4.68,  // Between G and A
-                'A#': 5.68,  // Between A and B
-              };
-
-              return (octaveOffset + (positions[note] || 0)) * 48; // 48px = width of white key
+            const positions: { [key: string]: number } = {
+              'C#': 0.68,
+              'D#': 1.68,
+              'F#': 3.68,
+              'G#': 4.68,
+              'A#': 5.68,
             };
+
+            const leftPx = (octaveOffset + (positions[note] || 0)) * 48;
 
             return (
               <div
                 key={key.note}
                 className="pointer-events-auto"
-                style={{ position: 'absolute', left: `${getLeftPosition()}px`, top: '0px' }}
+                style={{ position: 'absolute', left: `${leftPx}px`, top: '0px' }}
               >
                 <PianoKey
                   keyData={key}
@@ -295,7 +300,7 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
   };
 
   return (
-    <div className="flex flex-col items-center gap-6">
+    <div className="flex flex-col gap-6">
       <div className="text-center">
         <h2 className="text-2xl font-bold text-gray-800 mb-2">Virtual Piano</h2>
         <p className="text-gray-600">
@@ -328,12 +333,14 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
       </div>
 
       {/* Piano keyboard */}
-      <div className="bg-gray-200 p-6 rounded-lg shadow-2xl">
-        {renderKeys()}
+      <div ref={scrollContainerRef} className="w-full overflow-x-auto">
+        <div className="bg-gray-200 p-6 rounded-lg shadow-2xl inline-block min-w-fit">
+          {renderKeys()}
+        </div>
       </div>
 
       {/* Controls */}
-      <div className="flex flex-col gap-4 items-center w-full max-w-2xl">
+      <div className="flex flex-col gap-4 items-center self-center w-full max-w-2xl">
         {/* Octave controls */}
         <div className="flex items-center gap-4">
           <button
@@ -393,24 +400,12 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
             </span>
           )}
 
-          {audioInitialized && (
-            <button
-              onClick={() => {
-                audioService.reset();
-                setActiveNotes(new Set());
-              }}
-              className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Reset audio engine if experiencing latency"
-            >
-              Reset Audio
-            </button>
-          )}
         </div>
       </div>
 
       {/* Display played notes */}
       {playedNotes.length > 0 && (
-        <div className="bg-white p-4 rounded-lg shadow-md w-full max-w-2xl">
+        <div className="bg-white p-4 rounded-lg shadow-md self-center w-full max-w-2xl">
           <h3 className="font-semibold mb-2 text-gray-700">Played Notes:</h3>
           <div className="flex flex-wrap gap-2 mb-3">
             {playedNotes.map((note, i) => (

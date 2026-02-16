@@ -10,8 +10,6 @@ class AudioService {
     oscillators: OscillatorNode[];
     gain: GainNode;
   }> = new Map();
-  private currentNote: string | null = null; // For monophonic mode
-
   /**
    * Initialize the audio context
    * Must be called after user interaction (browser requirement)
@@ -91,7 +89,6 @@ class AudioService {
 
     // Store reference
     this.activeOscillators.set(note, { oscillators, gain: gainNode });
-    this.currentNote = note;
 
     // If duration specified, auto-stop
     if (duration > 0) {
@@ -122,9 +119,6 @@ class AudioService {
     // Remove from active map
     this.activeOscillators.delete(note);
 
-    if (this.currentNote === note) {
-      this.currentNote = null;
-    }
   }
 
   /**
@@ -143,13 +137,6 @@ class AudioService {
     if (this.masterGain) {
       this.masterGain.gain.value = Math.max(0, Math.min(1, volume));
     }
-  }
-
-  /**
-   * Get currently playing note (for monophonic mode)
-   */
-  getCurrentNote(): string | null {
-    return this.currentNote;
   }
 
   /**
@@ -175,39 +162,6 @@ class AudioService {
     }
   }
 
-  /**
-   * Fully reset the audio system
-   * Use this when experiencing latency or audio issues
-   */
-  reset(): void {
-    // Stop all active notes
-    this.stopAll();
-
-    // Close existing context
-    if (this.audioContext && this.audioContext.state !== 'closed') {
-      try {
-        this.audioContext.close();
-      } catch (e) {
-        console.warn('Error closing AudioContext:', e);
-      }
-    }
-
-    // Clear references
-    this.audioContext = null;
-    this.masterGain = null;
-    this.currentNote = null;
-
-    // Re-initialize
-    this.initialize();
-    console.log('AudioService reset complete');
-  }
-
-  /**
-   * Get audio context state for debugging
-   */
-  getState(): string {
-    return this.audioContext?.state || 'uninitialized';
-  }
 }
 
 // Export singleton instance

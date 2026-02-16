@@ -108,11 +108,7 @@ function App() {
                 Play a melody and discover which jazz standard it belongs to
               </p>
             </div>
-            <div className="text-sm text-gray-500 bg-blue-50 px-4 py-2 rounded-lg border border-blue-200">
-              <div className="font-semibold text-blue-900">Using Mock Data</div>
-              <div>Backend not connected</div>
             </div>
-          </div>
         </div>
       </header>
 
