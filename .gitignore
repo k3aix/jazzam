@@ -13,6 +13,10 @@ build/
 .env
 .env.local
 .env.*.local
+.env.prod
+
+# SSH keys
+*.pem
 
 # IDE
 .vscode/

@@ -3,11 +3,14 @@ using SearchService.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure Kestrel to listen on port 5001
-builder.WebHost.ConfigureKestrel(serverOptions =>
+// Configure Kestrel - use ASPNETCORE_URLS if set, otherwise localhost:5001
+if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
 {
-    serverOptions.ListenLocalhost(5001);
-});
+    builder.WebHost.ConfigureKestrel(serverOptions =>
+    {
+        serverOptions.ListenLocalhost(5001);
+    });
+}
 
 // Configure search algorithm settings
 builder.Services.Configure<SearchAlgorithmConfig>(

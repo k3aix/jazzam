@@ -1,0 +1,75 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: jazz-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Standards Service (Node.js)
+  standards-service:
+    build:
+      context: ./backend/standards-service
+      dockerfile: Dockerfile
+    container_name: jazz-standards
+    environment:
+      PORT: 3001
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      CORS_ORIGIN: "*"
+    volumes:
+      - ./midi-files:/app/midi-files:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Search Service (C# .NET)
+  search-service:
+    build:
+      context: ./backend/search-service/SearchService
+      dockerfile: Dockerfile
+    container_name: jazz-search
+    environment:
+      ASPNETCORE_URLS: "http://+:5001"
+      ASPNETCORE_ENVIRONMENT: Production
+      StandardsService__BaseUrl: "http://standards-service:3001"
+    depends_on:
+      - standards-service
+    restart: unless-stopped
+
+  # Frontend (Nginx + static files + reverse proxy)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: jazz-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - standards-service
+      - search-service
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  default:
+    name: jazz-network

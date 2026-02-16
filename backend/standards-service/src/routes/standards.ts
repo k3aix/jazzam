@@ -8,7 +8,7 @@ const standardsService = new StandardsService();
  * GET /api/standards
  * Get all jazz standards
  */
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', async (_req: Request, res: Response) => {
   try {
     const standards = await standardsService.getAllStandards();
     res.json({
@@ -41,13 +41,13 @@ router.get('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: standard,
     });
   } catch (error) {
     console.error('Error fetching standard:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Failed to fetch standard',
     });
@@ -77,7 +77,7 @@ router.post('/search', async (req: Request, res: Response) => {
     });
     const executionTime = Date.now() - startTime;
 
-    res.json({
+    return res.json({
       success: true,
       count: results.length,
       executionTime: `${executionTime}ms`,
@@ -85,7 +85,7 @@ router.post('/search', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error searching standards:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to search standards',
     });
@@ -96,7 +96,7 @@ router.post('/search', async (req: Request, res: Response) => {
  * GET /api/health
  * Health check endpoint
  */
-router.get('/health', (req: Request, res: Response) => {
+router.get('/health', (_req: Request, res: Response) => {
   res.json({
     success: true,
     service: 'Standards Service',
