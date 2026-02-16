@@ -41,12 +41,7 @@ class AudioService {
       return;
     }
 
-    // Monophonic mode: stop any currently playing note
-    if (this.currentNote && this.currentNote !== note) {
-      this.stopNote(this.currentNote);
-    }
-
-    // Stop any existing note with same name
+    // Stop only if same note is already playing (allow polyphony)
     this.stopNote(note);
 
     const now = this.audioContext.currentTime;
@@ -114,17 +109,17 @@ class AudioService {
 
     const now = this.audioContext.currentTime;
 
-    // Piano release: fade out over 200ms (longer than simple synth)
+    // Piano release: fade out over 200ms
     active.gain.gain.cancelScheduledValues(now);
     active.gain.gain.setValueAtTime(active.gain.gain.value, now);
     active.gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
 
-    // Stop all oscillators (harmonics) after release
+    // Stop all oscillators after release
     active.oscillators.forEach(osc => {
       osc.stop(now + 0.2);
     });
 
-    // Clean up
+    // Remove from active map
     this.activeOscillators.delete(note);
 
     if (this.currentNote === note) {
@@ -178,6 +173,40 @@ class AudioService {
     if (this.audioContext?.state === 'suspended') {
       await this.audioContext.resume();
     }
+  }
+
+  /**
+   * Fully reset the audio system
+   * Use this when experiencing latency or audio issues
+   */
+  reset(): void {
+    // Stop all active notes
+    this.stopAll();
+
+    // Close existing context
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+      try {
+        this.audioContext.close();
+      } catch (e) {
+        console.warn('Error closing AudioContext:', e);
+      }
+    }
+
+    // Clear references
+    this.audioContext = null;
+    this.masterGain = null;
+    this.currentNote = null;
+
+    // Re-initialize
+    this.initialize();
+    console.log('AudioService reset complete');
+  }
+
+  /**
+   * Get audio context state for debugging
+   */
+  getState(): string {
+    return this.audioContext?.state || 'uninitialized';
   }
 }
 

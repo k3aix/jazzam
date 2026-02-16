@@ -392,6 +392,19 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
               Click anywhere to enable sound
             </span>
           )}
+
+          {audioInitialized && (
+            <button
+              onClick={() => {
+                audioService.reset();
+                setActiveNotes(new Set());
+              }}
+              className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Reset audio engine if experiencing latency"
+            >
+              Reset Audio
+            </button>
+          )}
         </div>
       </div>
 
