@@ -26,4 +26,15 @@ public class SearchAlgorithmConfig
     /// Set to false to treat all positions equally (recommended for finding sub-melodies)
     /// </summary>
     public bool EnablePositionBias { get; set; } = false;
+
+    /// <summary>
+    /// Weight given to pitch matching in combined rhythm search (0.0 to 1.0).
+    /// Rhythm weight = 1 - PitchWeight.
+    /// </summary>
+    public double DefaultPitchWeight { get; set; } = 0.6;
+
+    /// <summary>
+    /// Error tolerance for rhythm matching (0.0 to 1.0)
+    /// </summary>
+    public double RhythmErrorTolerance { get; set; } = 0.35;
 }

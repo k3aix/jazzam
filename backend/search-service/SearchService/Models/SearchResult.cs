@@ -6,6 +6,8 @@ public class SearchResult
     public int MatchPosition { get; set; }
     public int MatchLength { get; set; }
     public double Confidence { get; set; }
+    public double? PitchConfidence { get; set; }
+    public double? RhythmConfidence { get; set; }
 }
 
 public class SearchResponse

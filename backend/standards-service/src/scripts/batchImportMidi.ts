@@ -11,10 +11,14 @@ interface MidiFileInfo {
 }
 
 async function main() {
-  const midiFolder = process.argv[2] || '../../midi-files/standards';
+  const forceReimport = process.argv.includes('--force');
+  const midiFolder = process.argv.find(arg => !arg.startsWith('-') && arg !== process.argv[0] && arg !== process.argv[1]) || '../../midi-files/standards';
   const midiPath = path.resolve(process.cwd(), midiFolder);
 
   console.log('🎵 Jazz MIDI Batch Importer\n');
+  if (forceReimport) {
+    console.log('⚠️  FORCE MODE: Will delete and re-import all standards\n');
+  }
   console.log('='.repeat(60));
   console.log(`📁 Scanning folder: ${midiPath}\n`);
 
@@ -60,6 +64,13 @@ async function main() {
   midiFiles.forEach((file, index) => {
     console.log(`   ${index + 1}. [${file.bookSource}] ${file.filename} → "${file.title}"`);
   });
+
+  // Handle force reimport
+  if (forceReimport) {
+    console.log('\n🗑️  Deleting all existing standards for re-import...');
+    const deleteResult = await query('DELETE FROM jazz_standards');
+    console.log(`   Deleted ${deleteResult.rowCount} standard(s)\n`);
+  }
 
   // Get existing standards from database
   console.log('\n📊 Checking database for existing standards...\n');
@@ -107,8 +118,8 @@ async function main() {
       const id = generateUUID();
       await query(
         `INSERT INTO jazz_standards (
-          id, title, composer, year, key, time_signature, interval_sequence, book_source
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          id, title, composer, year, key, time_signature, interval_sequence, duration_ratios, book_source
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           id,
           file.title,
@@ -117,6 +128,7 @@ async function main() {
           key,
           '4/4',
           melody.intervalSequence,
+          melody.durationRatios,
           file.bookSource
         ]
       );
@@ -125,7 +137,9 @@ async function main() {
       console.log(`   - Book source: ${file.bookSource}`);
       console.log(`   - Notes: ${melody.notes.length}`);
       console.log(`   - Intervals: ${melody.intervalSequence.length}`);
+      console.log(`   - Duration ratios: ${melody.durationRatios.length}`);
       console.log(`   - First intervals: [${melody.intervalSequence.slice(0, 8).join(', ')}...]`);
+      console.log(`   - First ratios (x4): [${melody.durationRatios.slice(0, 8).join(', ')}...]`);
       successCount++;
 
     } catch (error) {

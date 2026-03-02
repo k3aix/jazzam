@@ -17,9 +17,9 @@ export class ReportGenerator {
   generateConsoleReport(): void {
     const { summary } = this;
 
-    console.log('\n' + '='.repeat(70));
+    console.log('\n' + '='.repeat(90));
     console.log(chalk.bold.blue('  RECOGNITION TEST REPORT'));
-    console.log('='.repeat(70) + '\n');
+    console.log('='.repeat(90) + '\n');
 
     // Configuration
     console.log(chalk.bold('Configuration:'));
@@ -32,43 +32,80 @@ export class ReportGenerator {
     }
     console.log('');
 
-    // Overall Results
+    // Side-by-side results
+    const hasRhythm = summary.rhythmTestCount > 0;
+
     console.log(chalk.bold('Overall Results:'));
-    console.log(`  Total Tests:        ${summary.totalTests}`);
-    console.log(`  Successful:         ${this.formatSuccess(summary.successfulTests, summary.totalTests)}`);
-    console.log(`  Top Match Correct:  ${this.formatSuccess(summary.topMatchCorrect, summary.totalTests)}`);
-    console.log(`  No Match Found:     ${summary.noMatchCount} (${this.percentage(summary.noMatchCount, summary.totalTests)})`);
+    if (hasRhythm) {
+      console.log('  ' + ''.padEnd(24) + chalk.cyan('Pitch Only'.padEnd(20)) + chalk.magenta('Pitch + Rhythm'));
+      console.log(`  Total Tests:        ${String(summary.totalTests).padEnd(20)}${summary.rhythmTestCount}`);
+      console.log(`  Successful:         ${this.formatSuccess(summary.successfulTests, summary.totalTests).padEnd(31)}${this.formatSuccess(summary.rhythmSuccessfulTests, summary.rhythmTestCount)}`);
+      console.log(`  Top Match Correct:  ${this.formatSuccess(summary.topMatchCorrect, summary.totalTests).padEnd(31)}${this.formatSuccess(summary.rhythmTopMatchCorrect, summary.rhythmTestCount)}`);
+      console.log(`  No Match Found:     ${this.formatCount(summary.noMatchCount, summary.totalTests).padEnd(20)}${this.formatCount(summary.rhythmNoMatchCount, summary.rhythmTestCount)}`);
+    } else {
+      console.log(`  Total Tests:        ${summary.totalTests}`);
+      console.log(`  Successful:         ${this.formatSuccess(summary.successfulTests, summary.totalTests)}`);
+      console.log(`  Top Match Correct:  ${this.formatSuccess(summary.topMatchCorrect, summary.totalTests)}`);
+      console.log(`  No Match Found:     ${summary.noMatchCount} (${this.percentage(summary.noMatchCount, summary.totalTests)})`);
+    }
     console.log('');
 
     // Performance Metrics
     console.log(chalk.bold('Performance Metrics:'));
-    console.log(`  Avg Confidence:     ${(summary.averageConfidence * 100).toFixed(1)}%`);
-    console.log(`  Avg Rank:           ${summary.averageRank.toFixed(2)}`);
-    console.log(`  Avg Execution Time: ${summary.averageExecutionTime.toFixed(0)}ms`);
+    if (hasRhythm) {
+      console.log('  ' + ''.padEnd(24) + chalk.cyan('Pitch Only'.padEnd(20)) + chalk.magenta('Pitch + Rhythm'));
+      console.log(`  Avg Confidence:     ${((summary.averageConfidence * 100).toFixed(1) + '%').padEnd(20)}${(summary.rhythmAverageConfidence * 100).toFixed(1)}%`);
+      console.log(`  Avg Rank:           ${summary.averageRank.toFixed(2).padEnd(20)}${summary.rhythmAverageRank.toFixed(2)}`);
+      console.log(`  Avg Exec Time:      ${(summary.averageExecutionTime.toFixed(0) + 'ms').padEnd(20)}${summary.rhythmAverageExecutionTime.toFixed(0)}ms`);
+    } else {
+      console.log(`  Avg Confidence:     ${(summary.averageConfidence * 100).toFixed(1)}%`);
+      console.log(`  Avg Rank:           ${summary.averageRank.toFixed(2)}`);
+      console.log(`  Avg Execution Time: ${summary.averageExecutionTime.toFixed(0)}ms`);
+    }
     console.log('');
 
-    // Confidence Distribution
-    console.log(chalk.bold('Confidence Distribution:'));
-    const confDist = this.calculateConfidenceDistribution();
+    // Confidence Distribution (pitch only)
+    console.log(chalk.bold('Confidence Distribution (Pitch):'));
+    const confDist = this.calculateConfidenceDistribution('pitch');
     confDist.forEach(d => {
       const bar = '█'.repeat(Math.floor(d.percentage / 5));
       console.log(`  ${d.range}: ${bar} ${d.count} (${d.percentage.toFixed(1)}%)`);
     });
     console.log('');
 
+    if (hasRhythm) {
+      console.log(chalk.bold('Confidence Distribution (Pitch + Rhythm):'));
+      const rhythmConfDist = this.calculateConfidenceDistribution('rhythm');
+      rhythmConfDist.forEach(d => {
+        const bar = '█'.repeat(Math.floor(d.percentage / 5));
+        console.log(`  ${d.range}: ${bar} ${d.count} (${d.percentage.toFixed(1)}%)`);
+      });
+      console.log('');
+    }
+
     // Rank Distribution
-    console.log(chalk.bold('Rank Distribution (when found):'));
-    const rankDist = this.calculateRankDistribution();
+    console.log(chalk.bold('Rank Distribution (Pitch):'));
+    const rankDist = this.calculateRankDistribution('pitch');
     rankDist.slice(0, 5).forEach(d => {
       const bar = '█'.repeat(Math.floor(d.percentage / 5));
       console.log(`  #${d.rank}: ${bar} ${d.count} (${d.percentage.toFixed(1)}%)`);
     });
     console.log('');
 
+    if (hasRhythm) {
+      console.log(chalk.bold('Rank Distribution (Pitch + Rhythm):'));
+      const rhythmRankDist = this.calculateRankDistribution('rhythm');
+      rhythmRankDist.slice(0, 5).forEach(d => {
+        const bar = '█'.repeat(Math.floor(d.percentage / 5));
+        console.log(`  #${d.rank}: ${bar} ${d.count} (${d.percentage.toFixed(1)}%)`);
+      });
+      console.log('');
+    }
+
     // Failed Tests
     const failedTests = summary.results.filter(r => !r.correctMatch);
     if (failedTests.length > 0) {
-      console.log(chalk.bold.red(`Failed Tests (${failedTests.length}):`));
+      console.log(chalk.bold.red(`Failed Tests - Pitch (${failedTests.length}):`));
       failedTests.slice(0, 10).forEach(r => {
         console.log(`  ${chalk.red('✗')} ${r.testCase.standardTitle}`);
         console.log(`    Sequence: [${r.testCase.testSequence.join(', ')}]`);
@@ -87,39 +124,112 @@ export class ReportGenerator {
       console.log('');
     }
 
+    if (hasRhythm) {
+      const rhythmFailed = summary.results.filter(r => r.testCase.durationRatios !== null && !r.rhythmCorrectMatch);
+      if (rhythmFailed.length > 0) {
+        console.log(chalk.bold.red(`Failed Tests - Pitch + Rhythm (${rhythmFailed.length}):`));
+        rhythmFailed.slice(0, 10).forEach(r => {
+          console.log(`  ${chalk.red('✗')} ${r.testCase.standardTitle}`);
+          if (r.rhythmSearchResults.length > 0) {
+            const top = r.rhythmSearchResults[0];
+            console.log(`    Top result: "${top.title}" (${(top.confidence * 100).toFixed(1)}%)`);
+          } else {
+            console.log(`    No results returned`);
+          }
+          if (r.rhythmError) {
+            console.log(`    Error: ${r.rhythmError}`);
+          }
+        });
+        if (rhythmFailed.length > 10) {
+          console.log(`  ... and ${rhythmFailed.length - 10} more`);
+        }
+        console.log('');
+      }
+    }
+
     // Detailed Results Table
     console.log(chalk.bold('Detailed Results:'));
-    console.log('-'.repeat(90));
-    console.log(
-      chalk.gray(
-        `${'Title'.padEnd(30)} | ${'Rank'.padStart(4)} | ${'Conf'.padStart(6)} | ${'Errors'.padStart(6)} | ${'Top Match'.padEnd(25)}`
-      )
-    );
-    console.log('-'.repeat(90));
+    if (hasRhythm) {
+      console.log('-'.repeat(110));
+      console.log(
+        chalk.gray(
+          `${'Title'.padEnd(28)} | ` +
+          `${chalk.cyan('P.Rank')} | ${chalk.cyan('P.Conf')} | ` +
+          `${chalk.magenta('R.Rank')} | ${chalk.magenta('R.Conf')} | ` +
+          `${'Errors'.padStart(6)} | ${'Top Pitch Match'.padEnd(22)} | ${'Top Rhythm Match'.padEnd(22)}`
+        )
+      );
+      console.log('-'.repeat(110));
 
-    summary.results.forEach(r => {
-      const title = r.testCase.standardTitle.substring(0, 28).padEnd(30);
-      const rank = r.correctMatchRank?.toString().padStart(4) ?? 'N/A '.padStart(4);
-      const conf = r.correctMatchConfidence
-        ? `${(r.correctMatchConfidence * 100).toFixed(1)}%`.padStart(6)
-        : 'N/A'.padStart(6);
-      const errors = r.testCase.errorsApplied.length.toString().padStart(6);
-      const topMatch = r.searchResults[0]?.title.substring(0, 23).padEnd(25) ?? 'None'.padEnd(25);
+      summary.results.forEach(r => {
+        const title = r.testCase.standardTitle.substring(0, 26).padEnd(28);
+        const pRank = r.correctMatchRank?.toString().padStart(6) ?? 'N/A'.padStart(6);
+        const pConf = r.correctMatchConfidence
+          ? `${(r.correctMatchConfidence * 100).toFixed(1)}%`.padStart(6)
+          : 'N/A'.padStart(6);
+        const rRank = r.testCase.durationRatios
+          ? (r.rhythmCorrectMatchRank?.toString().padStart(6) ?? 'N/A'.padStart(6))
+          : '  -   ';
+        const rConf = r.testCase.durationRatios
+          ? (r.rhythmCorrectMatchConfidence
+            ? `${(r.rhythmCorrectMatchConfidence * 100).toFixed(1)}%`.padStart(6)
+            : 'N/A'.padStart(6))
+          : '  -   ';
+        const errors = r.testCase.errorsApplied.length.toString().padStart(6);
+        const topPitch = (r.searchResults[0]?.title.substring(0, 20) ?? 'None').padEnd(22);
+        const topRhythm = r.testCase.durationRatios
+          ? (r.rhythmSearchResults[0]?.title.substring(0, 20) ?? 'None').padEnd(22)
+          : '-'.padEnd(22);
 
-      const statusIcon = r.topMatchCorrect
-        ? chalk.green('✓')
-        : r.correctMatch
-        ? chalk.yellow('~')
-        : chalk.red('✗');
+        const pIcon = r.topMatchCorrect
+          ? chalk.green('✓')
+          : r.correctMatch
+          ? chalk.yellow('~')
+          : chalk.red('✗');
 
-      console.log(`${statusIcon} ${title} | ${rank} | ${conf} | ${errors} | ${topMatch}`);
-    });
-    console.log('-'.repeat(90));
+        const rIcon = !r.testCase.durationRatios
+          ? chalk.gray('-')
+          : r.rhythmTopMatchCorrect
+          ? chalk.green('✓')
+          : r.rhythmCorrectMatch
+          ? chalk.yellow('~')
+          : chalk.red('✗');
+
+        console.log(`${pIcon}${rIcon} ${title} | ${pRank} | ${pConf} | ${rRank} | ${rConf} | ${errors} | ${topPitch} | ${topRhythm}`);
+      });
+    } else {
+      console.log('-'.repeat(90));
+      console.log(
+        chalk.gray(
+          `${'Title'.padEnd(30)} | ${'Rank'.padStart(4)} | ${'Conf'.padStart(6)} | ${'Errors'.padStart(6)} | ${'Top Match'.padEnd(25)}`
+        )
+      );
+      console.log('-'.repeat(90));
+
+      summary.results.forEach(r => {
+        const title = r.testCase.standardTitle.substring(0, 28).padEnd(30);
+        const rank = r.correctMatchRank?.toString().padStart(4) ?? 'N/A '.padStart(4);
+        const conf = r.correctMatchConfidence
+          ? `${(r.correctMatchConfidence * 100).toFixed(1)}%`.padStart(6)
+          : 'N/A'.padStart(6);
+        const errors = r.testCase.errorsApplied.length.toString().padStart(6);
+        const topMatch = r.searchResults[0]?.title.substring(0, 23).padEnd(25) ?? 'None'.padEnd(25);
+
+        const statusIcon = r.topMatchCorrect
+          ? chalk.green('✓')
+          : r.correctMatch
+          ? chalk.yellow('~')
+          : chalk.red('✗');
+
+        console.log(`${statusIcon} ${title} | ${rank} | ${conf} | ${errors} | ${topMatch}`);
+      });
+    }
+    console.log('-'.repeat(hasRhythm ? 110 : 90));
 
     // Legend
-    console.log(chalk.gray('\nLegend: ✓ = Top match correct, ~ = Found but not top, ✗ = Not found'));
+    console.log(chalk.gray('\nLegend: ✓ = Top match correct, ~ = Found but not top, ✗ = Not found, - = No rhythm data'));
 
-    console.log('\n' + '='.repeat(70) + '\n');
+    console.log('\n' + '='.repeat(90) + '\n');
   }
 
   generateJsonReport(): string {
@@ -159,6 +269,7 @@ export class ReportGenerator {
     .config-item { display: flex; justify-content: space-between; padding: 5px 0; }
     .config-label { color: #718096; }
     .config-value { font-weight: 500; }
+    .algo-label { font-size: 0.8em; color: #718096; }
   </style>
 </head>
 <body>
@@ -177,7 +288,7 @@ export class ReportGenerator {
     </div>
 
     <div class="card">
-      <h2>Summary</h2>
+      <h2>Summary - Pitch Only</h2>
       <div class="stats">
         <div class="stat">
           <div class="stat-value">${summary.totalTests}</div>
@@ -206,10 +317,37 @@ export class ReportGenerator {
       </div>
     </div>
 
+    ${summary.rhythmTestCount > 0 ? `
     <div class="card">
-      <h2>Confidence Distribution</h2>
-      ${this.generateHtmlConfidenceChart()}
+      <h2>Summary - Pitch + Rhythm</h2>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-value">${summary.rhythmTestCount}</div>
+          <div class="stat-label">Tests with Rhythm</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value success">${((summary.rhythmSuccessfulTests / summary.rhythmTestCount) * 100).toFixed(1)}%</div>
+          <div class="stat-label">Success Rate</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">${((summary.rhythmTopMatchCorrect / summary.rhythmTestCount) * 100).toFixed(1)}%</div>
+          <div class="stat-label">Top Match Correct</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">${(summary.rhythmAverageConfidence * 100).toFixed(1)}%</div>
+          <div class="stat-label">Avg Confidence</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">${summary.rhythmAverageRank.toFixed(2)}</div>
+          <div class="stat-label">Avg Rank</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">${summary.rhythmAverageExecutionTime.toFixed(0)}ms</div>
+          <div class="stat-label">Avg Execution Time</div>
+        </div>
+      </div>
     </div>
+    ` : ''}
 
     <div class="card">
       <h2>Detailed Results</h2>
@@ -218,10 +356,12 @@ export class ReportGenerator {
           <tr>
             <th>Status</th>
             <th>Title</th>
-            <th>Rank</th>
-            <th>Confidence</th>
+            <th>P.Rank</th>
+            <th>P.Conf</th>
+            ${summary.rhythmTestCount > 0 ? '<th>R.Rank</th><th>R.Conf</th>' : ''}
             <th>Errors</th>
-            <th>Top Match</th>
+            <th>Top Pitch Match</th>
+            ${summary.rhythmTestCount > 0 ? '<th>Top Rhythm Match</th>' : ''}
           </tr>
         </thead>
         <tbody>
@@ -231,8 +371,13 @@ export class ReportGenerator {
               <td>${r.testCase.standardTitle}</td>
               <td>${r.correctMatchRank ?? 'N/A'}</td>
               <td>${r.correctMatchConfidence ? (r.correctMatchConfidence * 100).toFixed(1) + '%' : 'N/A'}</td>
+              ${summary.rhythmTestCount > 0 ? `
+                <td>${r.testCase.durationRatios ? (r.rhythmCorrectMatchRank ?? 'N/A') : '-'}</td>
+                <td>${r.testCase.durationRatios ? (r.rhythmCorrectMatchConfidence ? (r.rhythmCorrectMatchConfidence * 100).toFixed(1) + '%' : 'N/A') : '-'}</td>
+              ` : ''}
               <td>${r.testCase.errorsApplied.length}</td>
               <td>${r.searchResults[0]?.title ?? 'None'}</td>
+              ${summary.rhythmTestCount > 0 ? `<td>${r.testCase.durationRatios ? (r.rhythmSearchResults[0]?.title ?? 'None') : '-'}</td>` : ''}
             </tr>
           `).join('')}
         </tbody>
@@ -255,13 +400,17 @@ export class ReportGenerator {
     return color(`${count}/${total} (${pct.toFixed(1)}%)`);
   }
 
+  private formatCount(count: number, total: number): string {
+    return `${count} (${this.percentage(count, total)})`;
+  }
+
   private percentage(count: number, total: number): string {
     return `${((count / total) * 100).toFixed(1)}%`;
   }
 
-  private calculateConfidenceDistribution(): ConfidenceDistribution[] {
+  private calculateConfidenceDistribution(mode: 'pitch' | 'rhythm' = 'pitch'): ConfidenceDistribution[] {
     const ranges = [
-      { range: '90-100%', min: 0.9, max: 1.0 },
+      { range: '90-100%', min: 0.9, max: 1.01 },
       { range: '80-90%', min: 0.8, max: 0.9 },
       { range: '70-80%', min: 0.7, max: 0.8 },
       { range: '60-70%', min: 0.6, max: 0.7 },
@@ -269,9 +418,13 @@ export class ReportGenerator {
       { range: '<50%', min: 0, max: 0.5 },
     ];
 
-    const confidences = this.summary.results
-      .filter(r => r.correctMatchConfidence !== null)
-      .map(r => r.correctMatchConfidence!);
+    const confidences = mode === 'pitch'
+      ? this.summary.results
+          .filter(r => r.correctMatchConfidence !== null)
+          .map(r => r.correctMatchConfidence!)
+      : this.summary.results
+          .filter(r => r.testCase.durationRatios !== null && r.rhythmCorrectMatchConfidence !== null)
+          .map(r => r.rhythmCorrectMatchConfidence!);
 
     const total = confidences.length || 1;
 
@@ -281,10 +434,14 @@ export class ReportGenerator {
     });
   }
 
-  private calculateRankDistribution(): RankDistribution[] {
-    const ranks = this.summary.results
-      .filter(r => r.correctMatchRank !== null)
-      .map(r => r.correctMatchRank!);
+  private calculateRankDistribution(mode: 'pitch' | 'rhythm' = 'pitch'): RankDistribution[] {
+    const ranks = mode === 'pitch'
+      ? this.summary.results
+          .filter(r => r.correctMatchRank !== null)
+          .map(r => r.correctMatchRank!)
+      : this.summary.results
+          .filter(r => r.testCase.durationRatios !== null && r.rhythmCorrectMatchRank !== null)
+          .map(r => r.rhythmCorrectMatchRank!);
 
     const total = ranks.length || 1;
     const distribution: Map<number, number> = new Map();
@@ -300,20 +457,5 @@ export class ReportGenerator {
         count,
         percentage: (count / total) * 100,
       }));
-  }
-
-  private generateHtmlConfidenceChart(): string {
-    const dist = this.calculateConfidenceDistribution();
-    return `<div style="margin-top: 10px;">
-      ${dist.map(d => `
-        <div style="display: flex; align-items: center; margin: 5px 0;">
-          <span style="width: 80px;">${d.range}</span>
-          <div class="bar-container">
-            <div class="bar" style="width: ${d.percentage}%;"></div>
-          </div>
-          <span style="margin-left: 10px; color: #718096;">${d.count} (${d.percentage.toFixed(1)}%)</span>
-        </div>
-      `).join('')}
-    </div>`;
   }
 }

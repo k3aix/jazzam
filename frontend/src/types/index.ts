@@ -45,6 +45,8 @@ export interface SearchResult {
   intervalSequence: number[];   // Full interval sequence of the standard
   bookSource?: string;          // Which Real Book
   pageNumber?: number;
+  pitchConfidence?: number;     // 0-1 pitch-only confidence (rhythm search)
+  rhythmConfidence?: number;    // 0-1 rhythm-only confidence (rhythm search)
 }
 
 /**
@@ -54,6 +56,18 @@ export interface SearchRequest {
   intervals: number[];
   tolerance?: number;    // 0 = exact match, 1+ = allow fuzzy matching
   maxResults?: number;   // Maximum number of results to return
+}
+
+/**
+ * API request for rhythm-aware search
+ */
+export interface RhythmSearchRequest {
+  intervals: number[];
+  durationRatios: number[];
+  pitchWeight?: number;   // 0-1, default 0.6
+  minConfidence?: number;
+  maxResults?: number;
+  errorTolerance?: number;
 }
 
 /**

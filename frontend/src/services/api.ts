@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { SearchRequest, SearchResponse, SearchResult } from '../types';
+import { SearchRequest, RhythmSearchRequest, SearchResponse, SearchResult } from '../types';
 
 // Microservices URLs
 const SEARCH_SERVICE_URL = import.meta.env.VITE_SEARCH_SERVICE_URL || 'http://localhost:5001/api';
@@ -22,6 +22,8 @@ interface BackendSearchResult {
   matchPosition: number;
   matchLength: number;
   confidence: number;
+  pitchConfidence?: number | null;
+  rhythmConfidence?: number | null;
 }
 
 interface BackendSearchResponse {
@@ -67,6 +69,51 @@ class ApiService {
       };
     } catch (error) {
       console.error('Error searching standards:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Search for jazz standards by interval sequence + rhythm (duration ratios)
+   * Uses C# Search Service microservice
+   */
+  async searchByRhythm(request: RhythmSearchRequest): Promise<SearchResponse> {
+    try {
+      const response = await axios.post<BackendSearchResponse>(
+        `${SEARCH_SERVICE_URL}/search/rhythm`,
+        {
+          intervals: request.intervals,
+          durationRatios: request.durationRatios,
+          pitchWeight: request.pitchWeight ?? 0.6,
+          minConfidence: request.minConfidence ?? 0.4,
+          maxResults: request.maxResults ?? 10,
+          errorTolerance: request.errorTolerance ?? 0.3,
+        }
+      );
+
+      const results: SearchResult[] = response.data.data.map((item) => ({
+        id: item.standard.id,
+        title: item.standard.title,
+        composer: item.standard.composer || 'Unknown',
+        year: item.standard.year || undefined,
+        key: item.standard.key || undefined,
+        timeSignature: item.standard.time_signature,
+        matchConfidence: item.confidence,
+        matchPosition: item.matchPosition,
+        intervalSequence: item.standard.interval_sequence,
+        bookSource: item.standard.book_source || undefined,
+        pageNumber: item.standard.page_number || undefined,
+        pitchConfidence: item.pitchConfidence ?? undefined,
+        rhythmConfidence: item.rhythmConfidence ?? undefined,
+      }));
+
+      return {
+        results,
+        queryTime: response.data.executionTimeMs,
+        totalMatches: response.data.count,
+      };
+    } catch (error) {
+      console.error('Error searching standards with rhythm:', error);
       throw error;
     }
   }

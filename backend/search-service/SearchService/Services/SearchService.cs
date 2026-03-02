@@ -136,6 +136,297 @@ public class SearchService : ISearchService
         }
     }
 
+    public async Task<SearchResponse> SearchByRhythmAsync(RhythmSearchRequest request)
+    {
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            _logger.LogInformation(
+                "2D search: {IntCount} intervals, {RatioCount} duration ratios, pitchWeight={Weight}",
+                request.Intervals.Length,
+                request.DurationRatios.Length,
+                request.PitchWeight
+            );
+
+            var filteredIntervals = request.Intervals.Where(x => x != 0).ToArray();
+            if (filteredIntervals.Length < _config.MinimumIntervals)
+            {
+                return new SearchResponse
+                {
+                    Success = false,
+                    Count = 0,
+                    ExecutionTimeMs = stopwatch.ElapsedMilliseconds,
+                    Data = new List<SearchResult>(),
+                    Error = $"Query must contain at least {_config.MinimumIntervals} distinct pitch changes"
+                };
+            }
+
+            var allStandards = await _standardsClient.GetAllStandardsAsync();
+            _logger.LogInformation("Retrieved {Count} standards for 2D matching", allStandards.Count);
+
+            // Build query as 2D segments: (interval, durationRatio)
+            var querySegments = BuildSegments(request.Intervals, request.DurationRatios);
+            double pitchWeight = request.PitchWeight;
+            double rhythmWeight = 1.0 - pitchWeight;
+
+            var results = new List<SearchResult>();
+
+            foreach (var standard in allStandards)
+            {
+                // Build standard's 2D segments
+                var standardSegments = BuildSegments(
+                    standard.IntervalSequence,
+                    standard.DurationRatios
+                );
+
+                if (standardSegments.Length == 0) continue;
+
+                var match = FindBestMatch2D(
+                    standardSegments,
+                    querySegments,
+                    request.ErrorTolerance,
+                    pitchWeight,
+                    rhythmWeight
+                );
+
+                if (match == null) continue;
+
+                var confidence = CalculateConfidence(
+                    match,
+                    querySegments.Length,
+                    standardSegments.Length
+                );
+
+                if (confidence >= request.MinConfidence)
+                {
+                    results.Add(new SearchResult
+                    {
+                        Standard = standard,
+                        MatchPosition = match.Position,
+                        MatchLength = match.MatchLength,
+                        Confidence = Math.Round(confidence, 3),
+                        PitchConfidence = Math.Round(match.PitchScore, 3),
+                        RhythmConfidence = Math.Round(match.RhythmScore, 3)
+                    });
+                }
+            }
+
+            var sortedResults = results
+                .OrderByDescending(r => r.Confidence)
+                .ThenBy(r => r.MatchPosition)
+                .Take(request.MaxResults)
+                .ToList();
+
+            stopwatch.Stop();
+
+            _logger.LogInformation(
+                "2D search completed in {ElapsedMs}ms, found {Count} matches",
+                stopwatch.ElapsedMilliseconds,
+                sortedResults.Count
+            );
+
+            return new SearchResponse
+            {
+                Success = true,
+                Count = sortedResults.Count,
+                ExecutionTimeMs = stopwatch.ElapsedMilliseconds,
+                Data = sortedResults
+            };
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            _logger.LogError(ex, "Error during 2D search");
+
+            return new SearchResponse
+            {
+                Success = false,
+                Count = 0,
+                ExecutionTimeMs = stopwatch.ElapsedMilliseconds,
+                Data = new List<SearchResult>(),
+                Error = ex.Message
+            };
+        }
+    }
+
+    /// <summary>
+    /// A 2D melody segment: pitch interval + duration ratio.
+    /// </summary>
+    private struct MelodySegment
+    {
+        public int Interval;
+        public int DurationRatio;
+    }
+
+    /// <summary>
+    /// Build array of 2D segments from parallel interval and duration arrays.
+    /// If duration ratios are missing or shorter, defaults to 0 (unknown).
+    /// </summary>
+    private MelodySegment[] BuildSegments(int[] intervals, int[]? durationRatios)
+    {
+        var segments = new MelodySegment[intervals.Length];
+        for (int i = 0; i < intervals.Length; i++)
+        {
+            segments[i] = new MelodySegment
+            {
+                Interval = intervals[i],
+                DurationRatio = (durationRatios != null && i < durationRatios.Length)
+                    ? durationRatios[i] : 0
+            };
+        }
+        return segments;
+    }
+
+    /// <summary>
+    /// Find the best matching subsequence using unified 2D segments.
+    /// Each element is a (pitch, rhythm) pair compared simultaneously.
+    /// </summary>
+    private FuzzyMatch? FindBestMatch2D(
+        MelodySegment[] haystack, MelodySegment[] needle,
+        double errorTolerance, double pitchWeight, double rhythmWeight)
+    {
+        // Filter out zero-interval segments from needle (repeated notes)
+        var filteredNeedle = needle.Where(s => s.Interval != 0).ToArray();
+        if (filteredNeedle.Length == 0) return null;
+
+        FuzzyMatch? bestMatch = null;
+        double maxAllowedDistance = filteredNeedle.Length * errorTolerance;
+
+        for (int i = 0; i < haystack.Length; i++)
+        {
+            int minWindowSize = filteredNeedle.Length;
+            int maxWindowSize = Math.Min(haystack.Length - i, filteredNeedle.Length * 3);
+
+            for (int windowSize = minWindowSize; windowSize <= maxWindowSize; windowSize++)
+            {
+                if (i + windowSize > haystack.Length) break;
+
+                var window = haystack.Skip(i).Take(windowSize).ToArray();
+                var filteredWindow = window.Where(s => s.Interval != 0).ToArray();
+
+                if (Math.Abs(filteredWindow.Length - filteredNeedle.Length) > maxAllowedDistance)
+                    continue;
+
+                // Unified 2D Levenshtein
+                var (distance, pitchDist, rhythmDist) = Calculate2DLevenshtein(
+                    filteredWindow, filteredNeedle, pitchWeight, rhythmWeight
+                );
+
+                if (distance <= maxAllowedDistance)
+                {
+                    double score = 1.0 - (distance / filteredNeedle.Length);
+
+                    if (_config.EnablePositionBias)
+                    {
+                        double positionBias = i == 0 ? 1.1 : (i < 5 ? 1.05 : 1.0);
+                        score *= positionBias;
+                    }
+
+                    if (bestMatch == null || score > bestMatch.Score)
+                    {
+                        // Decompose into pitch-only and rhythm-only scores for logging
+                        double maxLen = Math.Max(filteredWindow.Length, filteredNeedle.Length);
+                        double pitchScore = maxLen > 0 ? 1.0 - (pitchDist / maxLen) : 0;
+                        double rhythmScore = maxLen > 0 ? 1.0 - (rhythmDist / maxLen) : 0;
+
+                        bestMatch = new FuzzyMatch
+                        {
+                            Position = i,
+                            MatchLength = windowSize,
+                            ErrorCount = (int)Math.Ceiling(distance),
+                            Score = score,
+                            FilteredLength = filteredNeedle.Length,
+                            PitchScore = Math.Max(0, pitchScore),
+                            RhythmScore = Math.Max(0, rhythmScore)
+                        };
+                    }
+                }
+            }
+        }
+
+        return bestMatch;
+    }
+
+    /// <summary>
+    /// Levenshtein on 2D melody segments. Each substitution cost combines
+    /// pitch distance and rhythm distance into a single cost.
+    /// Returns (combinedDistance, pitchOnlyDistance, rhythmOnlyDistance).
+    /// </summary>
+    private (double combined, double pitch, double rhythm) Calculate2DLevenshtein(
+        MelodySegment[] source, MelodySegment[] target,
+        double pitchWeight, double rhythmWeight)
+    {
+        if (source.Length == 0) return (target.Length, target.Length, target.Length);
+        if (target.Length == 0) return (source.Length, source.Length, source.Length);
+
+        int sLen = source.Length, tLen = target.Length;
+        double[,] dist = new double[sLen + 1, tLen + 1];
+        double[,] pDist = new double[sLen + 1, tLen + 1]; // pitch-only tracking
+        double[,] rDist = new double[sLen + 1, tLen + 1]; // rhythm-only tracking
+
+        for (int i = 0; i <= sLen; i++) { dist[i, 0] = i; pDist[i, 0] = i; rDist[i, 0] = i; }
+        for (int j = 0; j <= tLen; j++) { dist[0, j] = j; pDist[0, j] = j; rDist[0, j] = j; }
+
+        for (int i = 1; i <= sLen; i++)
+        {
+            for (int j = 1; j <= tLen; j++)
+            {
+                // Pitch substitution cost: 0 if exact, graduated by semitone difference
+                int pitchDiff = Math.Abs(source[i - 1].Interval - target[j - 1].Interval);
+                double pitchCost = pitchDiff == 0 ? 0.0 : Math.Min(pitchDiff / 3.0, 1.0);
+
+                // Rhythm substitution cost: graduated by ratio difference
+                // Values are x4 (quarter=4, eighth=2, half=8, dotted-half=12, whole=16)
+                // Use ratio-based comparison: how far apart are the two values proportionally
+                int srcRatio = source[i - 1].DurationRatio;
+                int tgtRatio = target[j - 1].DurationRatio;
+                double rhythmCost;
+                if (srcRatio == 0 || tgtRatio == 0)
+                    rhythmCost = 0.0; // Unknown rhythm, don't penalize
+                else
+                {
+                    // Proportional distance: e.g., 12 vs 8 = ratio 1.5, 32 vs 8 = ratio 4.0
+                    double ratio = (double)Math.Max(srcRatio, tgtRatio) / Math.Min(srcRatio, tgtRatio);
+                    if (ratio <= 1.0) rhythmCost = 0.0;         // exact match
+                    else if (ratio <= 1.5) rhythmCost = 0.15;   // e.g., 8 vs 6 (half vs dotted-quarter)
+                    else if (ratio <= 2.0) rhythmCost = 0.35;   // e.g., 8 vs 4 (half vs quarter)
+                    else if (ratio <= 3.0) rhythmCost = 0.65;   // e.g., 12 vs 4 (dotted-half vs quarter)
+                    else rhythmCost = 1.0;                      // very different durations
+                }
+
+                // Combined cost: weighted sum of both dimensions
+                double substCost = (pitchWeight * pitchCost) + (rhythmWeight * rhythmCost);
+
+                // Combined distance
+                double del = dist[i - 1, j] + 1.0;
+                double ins = dist[i, j - 1] + 1.0;
+                double sub = dist[i - 1, j - 1] + substCost;
+
+                if (del <= ins && del <= sub)
+                {
+                    dist[i, j] = del;
+                    pDist[i, j] = pDist[i - 1, j] + 1.0;
+                    rDist[i, j] = rDist[i - 1, j] + 1.0;
+                }
+                else if (ins <= sub)
+                {
+                    dist[i, j] = ins;
+                    pDist[i, j] = pDist[i, j - 1] + 1.0;
+                    rDist[i, j] = rDist[i, j - 1] + 1.0;
+                }
+                else
+                {
+                    dist[i, j] = sub;
+                    pDist[i, j] = pDist[i - 1, j - 1] + pitchCost;
+                    rDist[i, j] = rDist[i - 1, j - 1] + rhythmCost;
+                }
+            }
+        }
+
+        return (dist[sLen, tLen], pDist[sLen, tLen], rDist[sLen, tLen]);
+    }
+
     /// <summary>
     /// Remove all zeros from a sequence, focusing purely on melodic contour.
     /// Repeated notes (interval 0) are ignored as users may play different repetitions.
@@ -344,5 +635,7 @@ public class SearchService : ISearchService
         public int ErrorCount { get; set; }
         public double Score { get; set; }
         public int FilteredLength { get; set; } // Length after removing zeros
+        public double PitchScore { get; set; }  // Pitch-only accuracy (for 2D search logging)
+        public double RhythmScore { get; set; } // Rhythm-only accuracy (for 2D search logging)
     }
 }

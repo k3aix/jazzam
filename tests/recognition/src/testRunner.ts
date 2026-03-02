@@ -38,8 +38,15 @@ export class RecognitionTestRunner {
       results.push(result);
 
       if (this.config.verbose) {
-        const status = result.topMatchCorrect ? '✓' : result.correctMatch ? '~' : '✗';
-        console.log(`  ${status} Rank: ${result.correctMatchRank ?? 'N/A'}, Confidence: ${result.correctMatchConfidence?.toFixed(3) ?? 'N/A'}`);
+        const pStatus = result.topMatchCorrect ? '✓' : result.correctMatch ? '~' : '✗';
+        const pInfo = `Pitch: ${pStatus} Rank ${result.correctMatchRank ?? 'N/A'}, Conf ${result.correctMatchConfidence?.toFixed(3) ?? 'N/A'}`;
+
+        let rInfo = '';
+        if (testCase.durationRatios) {
+          const rStatus = result.rhythmTopMatchCorrect ? '✓' : result.rhythmCorrectMatch ? '~' : '✗';
+          rInfo = ` | Rhythm: ${rStatus} Rank ${result.rhythmCorrectMatchRank ?? 'N/A'}, Conf ${result.rhythmCorrectMatchConfidence?.toFixed(3) ?? 'N/A'}`;
+        }
+        console.log(`  ${pInfo}${rInfo}`);
       }
     }
 
@@ -50,7 +57,7 @@ export class RecognitionTestRunner {
 
   private async fetchStandards(): Promise<JazzStandard[]> {
     let query = `
-      SELECT id, title, composer, interval_sequence
+      SELECT id, title, composer, interval_sequence, duration_ratios
       FROM jazz_standards
       WHERE array_length(interval_sequence, 1) >= $1
     `;
@@ -78,6 +85,7 @@ export class RecognitionTestRunner {
       title: row.title,
       composer: row.composer,
       intervalSequence: row.interval_sequence,
+      durationRatios: row.duration_ratios ?? null,
     }));
   }
 
@@ -86,11 +94,20 @@ export class RecognitionTestRunner {
       const { sequence, startPosition } = this.extractSequence(standard.intervalSequence);
       const { modifiedSequence, errors } = this.applyErrors(sequence);
 
+      // Extract matching duration ratios segment (same position, same length)
+      let durationRatios: number[] | null = null;
+      if (standard.durationRatios && standard.durationRatios.length >= startPosition + this.config.sequenceLength) {
+        // Duration ratios has same length as intervals (N-1 for N notes)
+        // so the positions match directly
+        durationRatios = standard.durationRatios.slice(startPosition, startPosition + this.config.sequenceLength);
+      }
+
       return {
         standardId: standard.id,
         standardTitle: standard.title,
         originalSequence: standard.intervalSequence,
         testSequence: modifiedSequence,
+        durationRatios,
         extractionStart: startPosition,
         errorsApplied: errors,
       };
@@ -177,6 +194,28 @@ export class RecognitionTestRunner {
   }
 
   private async runSingleTest(testCase: TestCase): Promise<TestResult> {
+    // Fire pitch-only and rhythm searches in parallel
+    const pitchPromise = this.runPitchSearch(testCase);
+    const rhythmPromise = testCase.durationRatios
+      ? this.runRhythmSearch(testCase)
+      : Promise.resolve(null);
+
+    const [pitchResult, rhythmResult] = await Promise.all([pitchPromise, rhythmPromise]);
+
+    return {
+      ...pitchResult,
+      ...(rhythmResult ?? {
+        rhythmSearchResults: [],
+        rhythmCorrectMatch: false,
+        rhythmCorrectMatchRank: null,
+        rhythmCorrectMatchConfidence: null,
+        rhythmTopMatchCorrect: false,
+        rhythmExecutionTimeMs: 0,
+      }),
+    };
+  }
+
+  private async runPitchSearch(testCase: TestCase): Promise<Omit<TestResult, 'rhythmSearchResults' | 'rhythmCorrectMatch' | 'rhythmCorrectMatchRank' | 'rhythmCorrectMatchConfidence' | 'rhythmTopMatchCorrect' | 'rhythmExecutionTimeMs' | 'rhythmError'>> {
     const startTime = Date.now();
 
     try {
@@ -201,20 +240,16 @@ export class RecognitionTestRunner {
         matchPosition: r.matchPosition,
       }));
 
-      // Find if the correct standard is in the results
       const correctMatchIndex = searchResults.findIndex(r => r.id === testCase.standardId);
       const correctMatch = correctMatchIndex !== -1;
-      const correctMatchRank = correctMatch ? correctMatchIndex + 1 : null;
-      const correctMatchConfidence = correctMatch ? searchResults[correctMatchIndex].confidence : null;
-      const topMatchCorrect = searchResults.length > 0 && searchResults[0].id === testCase.standardId;
 
       return {
         testCase,
         searchResults,
         correctMatch,
-        correctMatchRank,
-        correctMatchConfidence,
-        topMatchCorrect,
+        correctMatchRank: correctMatch ? correctMatchIndex + 1 : null,
+        correctMatchConfidence: correctMatch ? searchResults[correctMatchIndex].confidence : null,
+        topMatchCorrect: searchResults.length > 0 && searchResults[0].id === testCase.standardId,
         executionTimeMs,
       };
     } catch (error) {
@@ -227,6 +262,68 @@ export class RecognitionTestRunner {
         topMatchCorrect: false,
         executionTimeMs: Date.now() - startTime,
         error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  private async runRhythmSearch(testCase: TestCase): Promise<{
+    rhythmSearchResults: SearchResult[];
+    rhythmCorrectMatch: boolean;
+    rhythmCorrectMatchRank: number | null;
+    rhythmCorrectMatchConfidence: number | null;
+    rhythmTopMatchCorrect: boolean;
+    rhythmExecutionTimeMs: number;
+    rhythmError?: string;
+  }> {
+    const startTime = Date.now();
+
+    try {
+      const response = await axios.post<{
+        success: boolean;
+        data: Array<{
+          standard: { id: string; title: string };
+          confidence: number;
+          matchPosition: number;
+          pitchConfidence?: number;
+          rhythmConfidence?: number;
+        }>;
+        executionTimeMs: number;
+      }>(`${this.config.searchServiceUrl}/search/rhythm`, {
+        intervals: testCase.testSequence,
+        durationRatios: testCase.durationRatios,
+      });
+
+      const executionTimeMs = Date.now() - startTime;
+
+      const searchResults: SearchResult[] = response.data.data.map(r => ({
+        id: r.standard.id,
+        title: r.standard.title,
+        confidence: r.confidence,
+        matchPosition: r.matchPosition,
+        pitchConfidence: r.pitchConfidence,
+        rhythmConfidence: r.rhythmConfidence,
+      }));
+
+      const correctMatchIndex = searchResults.findIndex(r => r.id === testCase.standardId);
+      const correctMatch = correctMatchIndex !== -1;
+
+      return {
+        rhythmSearchResults: searchResults,
+        rhythmCorrectMatch: correctMatch,
+        rhythmCorrectMatchRank: correctMatch ? correctMatchIndex + 1 : null,
+        rhythmCorrectMatchConfidence: correctMatch ? searchResults[correctMatchIndex].confidence : null,
+        rhythmTopMatchCorrect: searchResults.length > 0 && searchResults[0].id === testCase.standardId,
+        rhythmExecutionTimeMs: executionTimeMs,
+      };
+    } catch (error) {
+      return {
+        rhythmSearchResults: [],
+        rhythmCorrectMatch: false,
+        rhythmCorrectMatchRank: null,
+        rhythmCorrectMatchConfidence: null,
+        rhythmTopMatchCorrect: false,
+        rhythmExecutionTimeMs: Date.now() - startTime,
+        rhythmError: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }
@@ -254,6 +351,33 @@ export class RecognitionTestRunner {
 
     const averageExecutionTime = results.reduce((a, r) => a + r.executionTimeMs, 0) / results.length;
 
+    // Rhythm stats (only for tests that had duration_ratios)
+    const rhythmResults = results.filter(r => r.testCase.durationRatios !== null);
+    const rhythmTestCount = rhythmResults.length;
+    const rhythmSuccessfulTests = rhythmResults.filter(r => r.rhythmCorrectMatch).length;
+    const rhythmTopMatchCorrect = rhythmResults.filter(r => r.rhythmTopMatchCorrect).length;
+    const rhythmNoMatchCount = rhythmResults.filter(r => r.rhythmSearchResults.length === 0).length;
+
+    const rhythmConfidences = rhythmResults
+      .filter(r => r.rhythmCorrectMatchConfidence !== null)
+      .map(r => r.rhythmCorrectMatchConfidence!);
+
+    const rhythmRanks = rhythmResults
+      .filter(r => r.rhythmCorrectMatchRank !== null)
+      .map(r => r.rhythmCorrectMatchRank!);
+
+    const rhythmAverageConfidence = rhythmConfidences.length > 0
+      ? rhythmConfidences.reduce((a, b) => a + b, 0) / rhythmConfidences.length
+      : 0;
+
+    const rhythmAverageRank = rhythmRanks.length > 0
+      ? rhythmRanks.reduce((a, b) => a + b, 0) / rhythmRanks.length
+      : 0;
+
+    const rhythmAverageExecutionTime = rhythmResults.length > 0
+      ? rhythmResults.reduce((a, r) => a + r.rhythmExecutionTimeMs, 0) / rhythmResults.length
+      : 0;
+
     return {
       config: this.config,
       totalTests: results.length,
@@ -263,6 +387,13 @@ export class RecognitionTestRunner {
       averageRank,
       averageExecutionTime,
       noMatchCount,
+      rhythmSuccessfulTests,
+      rhythmTopMatchCorrect,
+      rhythmAverageConfidence,
+      rhythmAverageRank,
+      rhythmAverageExecutionTime,
+      rhythmNoMatchCount,
+      rhythmTestCount,
       results,
       timestamp: new Date(),
     };
