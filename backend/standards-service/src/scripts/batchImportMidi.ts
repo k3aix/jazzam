@@ -72,15 +72,15 @@ async function main() {
     console.log(`   Deleted ${deleteResult.rowCount} standard(s)\n`);
   }
 
-  // Get existing standards from database
+  // Get existing standards from database (keyed by title + book_source to allow variants)
   console.log('\n📊 Checking database for existing standards...\n');
-  const result = await query('SELECT title FROM jazz_standards');
-  const existingTitles = new Set(result.rows.map(row => row.title.toLowerCase()));
+  const result = await query('SELECT title, book_source FROM jazz_standards');
+  const existingKeys = new Set(result.rows.map(row => `${row.title.toLowerCase()}|${row.book_source}`));
 
-  console.log(`   Database has ${existingTitles.size} standard(s)`);
+  console.log(`   Database has ${existingKeys.size} standard(s)`);
 
-  // Filter out already imported files
-  const newFiles = midiFiles.filter(file => !existingTitles.has(file.title.toLowerCase()));
+  // Filter out already imported files (same title + same book source = already imported)
+  const newFiles = midiFiles.filter(file => !existingKeys.has(`${file.title.toLowerCase()}|${file.bookSource}`));
 
   if (newFiles.length === 0) {
     console.log('\n✅ All MIDI files are already in the database!');
@@ -147,6 +147,14 @@ async function main() {
       errorCount++;
     }
   }
+
+  // Update standards-list.txt with all imported standards
+  const standardsListPath = path.resolve(midiPath, '..', 'standards-list.txt');
+  const allTitles = midiFiles
+    .map(f => `${f.bookSource}: ${f.title}`)
+    .sort((a, b) => a.localeCompare(b));
+  fs.writeFileSync(standardsListPath, allTitles.join('\n') + '\n');
+  console.log(`\n📝 Updated ${standardsListPath} (${allTitles.length} standards)`);
 
   // Summary
   console.log('\n' + '='.repeat(60));

@@ -96,8 +96,11 @@ public class SearchService : ISearchService
                 }
             }
 
+            // Deduplicate by title (keep best-scoring variant per song)
+            var deduped = DeduplicateByTitle(results);
+
             // Sort by confidence (highest first), then by position (earlier is better)
-            var sortedResults = results
+            var sortedResults = deduped
                 .OrderByDescending(r => r.Confidence)
                 .ThenBy(r => r.MatchPosition)
                 .Take(request.MaxResults)
@@ -212,7 +215,10 @@ public class SearchService : ISearchService
                 }
             }
 
-            var sortedResults = results
+            // Deduplicate by title (keep best-scoring variant per song)
+            var deduped = DeduplicateByTitle(results);
+
+            var sortedResults = deduped
                 .OrderByDescending(r => r.Confidence)
                 .ThenBy(r => r.MatchPosition)
                 .Take(request.MaxResults)
@@ -587,6 +593,18 @@ public class SearchService : ISearchService
 
     /// <summary>
     /// Calculate confidence score based on match quality with multiple factors.
+    /// When multiple MIDI variants of the same song exist (e.g. from different books),
+    /// keep only the best-scoring variant per title.
+    /// </summary>
+    private static List<SearchResult> DeduplicateByTitle(List<SearchResult> results)
+    {
+        return results
+            .GroupBy(r => r.Standard.Title, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.OrderByDescending(r => r.Confidence).First())
+            .ToList();
+    }
+
+    /// <summary>
     /// Position-neutral scoring - treats all positions in the song equally.
     /// Uses filtered length (zeros removed) for accuracy calculation.
     /// </summary>
