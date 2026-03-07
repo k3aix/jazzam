@@ -50,7 +50,7 @@ public class SearchController : ControllerBase
 
         if (!response.Success)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, response);
+            return BadRequest(response);
         }
 
         return Ok(response);
@@ -88,7 +88,7 @@ public class SearchController : ControllerBase
 
         if (!response.Success)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, response);
+            return BadRequest(response);
         }
 
         return Ok(response);
