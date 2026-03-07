@@ -68,6 +68,10 @@ class ApiService {
         totalMatches: response.data.count,
       };
     } catch (error) {
+      // 400 = "not enough notes yet", return empty results instead of throwing
+      if (axios.isAxiosError(error) && error.response?.status === 400) {
+        return { results: [], queryTime: 0, totalMatches: 0 };
+      }
       console.error('Error searching standards:', error);
       throw error;
     }
@@ -113,6 +117,9 @@ class ApiService {
         totalMatches: response.data.count,
       };
     } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 400) {
+        return { results: [], queryTime: 0, totalMatches: 0 };
+      }
       console.error('Error searching standards with rhythm:', error);
       throw error;
     }

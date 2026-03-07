@@ -219,7 +219,8 @@ public class SearchService : ISearchService
             var deduped = DeduplicateByTitle(results);
 
             var sortedResults = deduped
-                .OrderByDescending(r => r.Confidence)
+                .OrderByDescending(r => r.PitchConfidence)
+                .ThenByDescending(r => r.Confidence)
                 .ThenBy(r => r.MatchPosition)
                 .Take(request.MaxResults)
                 .ToList();

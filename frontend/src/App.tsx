@@ -7,6 +7,7 @@ import apiService from './services/api';
 import loggerService from './services/loggerService';
 
 const MUSICAL_VALUES = [0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8];
+const MIN_NOTES = 6; // Backend requires at least 5 non-zero intervals = 6 notes
 
 function computeDurationRatios(notes: Note[]): number[] {
   if (notes.length < 2) return [];
@@ -37,14 +38,10 @@ function computeDurationRatios(notes: Note[]): number[] {
 function App() {
   const [currentNotes, setCurrentNotes] = useState<Note[]>([]);
   const [currentIntervals, setCurrentIntervals] = useState<number[]>([]);
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [rhythmResults, setRhythmResults] = useState<SearchResult[]>([]);
+  const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [isRhythmSearching, setIsRhythmSearching] = useState(false);
   const [queryTime, setQueryTime] = useState<number | undefined>();
-  const [rhythmQueryTime, setRhythmQueryTime] = useState<number | undefined>();
   const [totalMatches, setTotalMatches] = useState<number | undefined>();
-  const [rhythmTotalMatches, setRhythmTotalMatches] = useState<number | undefined>();
   const [isRecording, setIsRecording] = useState(false);
   const [isConsoleOpen, setIsConsoleOpen] = useState(true);
 
@@ -58,10 +55,9 @@ function App() {
 
   // Auto-search when intervals change while recording (with debounce)
   useEffect(() => {
-    if (!isRecording || currentIntervals.length < 2) {
+    if (!isRecording || currentNotes.length < MIN_NOTES) {
       if (!isRecording) {
-        setSearchResults([]);
-        setRhythmResults([]);
+        setResults([]);
       }
       return;
     }
@@ -79,11 +75,11 @@ function App() {
     loggerService.logRecordingState(newRecordingState);
     if (isRecording) {
       // Stopped recording - do final search if we have notes
-      if (currentIntervals.length >= 2) {
+      if (currentNotes.length >= MIN_NOTES) {
         performSearch();
       }
     }
-  }, [isRecording, currentIntervals]);
+  }, [isRecording, currentIntervals, currentNotes]);
 
   const performSearch = async () => {
     if (currentIntervals.length < 2) {
@@ -91,7 +87,6 @@ function App() {
     }
 
     setIsSearching(true);
-    setIsRhythmSearching(true);
     loggerService.logSearchRequest(currentIntervals);
 
     const durationRatios = computeDurationRatios(currentNotes);
@@ -99,27 +94,22 @@ function App() {
       loggerService.logSystem(`Duration ratios played: [${durationRatios.join(', ')}]`);
     }
 
-    // Fire both searches in parallel
-    const pitchPromise = apiService.searchByIntervals({
-      intervals: currentIntervals,
-      tolerance: 0,
-      maxResults: 10,
-    });
+    try {
+      // Unified search: use rhythm endpoint (includes pitch data) when duration ratios available,
+      // fall back to pitch-only otherwise. Backend sorts by pitch first, rhythm disambiguates.
+      const response = durationRatios.length >= 2
+        ? await apiService.searchByRhythm({
+            intervals: currentIntervals,
+            durationRatios,
+            maxResults: 10,
+          })
+        : await apiService.searchByIntervals({
+            intervals: currentIntervals,
+            tolerance: 0,
+            maxResults: 10,
+          });
 
-    const rhythmPromise = durationRatios.length >= 2
-      ? apiService.searchByRhythm({
-          intervals: currentIntervals,
-          durationRatios,
-          maxResults: 10,
-        })
-      : Promise.resolve(null);
-
-    const [pitchResult, rhythmResult] = await Promise.allSettled([pitchPromise, rhythmPromise]);
-
-    // Handle pitch results
-    if (pitchResult.status === 'fulfilled') {
-      const response = pitchResult.value;
-      setSearchResults(response.results);
+      setResults(response.results);
       setQueryTime(response.queryTime);
       setTotalMatches(response.totalMatches);
 
@@ -133,52 +123,30 @@ function App() {
           matchPosition: r.matchPosition,
         })),
       });
-    } else {
-      console.error('Pitch search failed:', pitchResult.reason);
-      loggerService.logSearchResponse({
-        intervals: currentIntervals,
-        error: pitchResult.reason instanceof Error ? pitchResult.reason.message : 'Unknown error',
-      });
-      setSearchResults([]);
-    }
-    setIsSearching(false);
 
-    // Handle rhythm results
-    if (rhythmResult.status === 'fulfilled' && rhythmResult.value) {
-      const response = rhythmResult.value;
-      setRhythmResults(response.results);
-      setRhythmQueryTime(response.queryTime);
-      setRhythmTotalMatches(response.totalMatches);
-
-      loggerService.logSystem(
-        `[Rhythm] Search completed: ${response.totalMatches} matches in ${response.queryTime?.toFixed(0)}ms`,
-        'success'
-      );
       if (response.results.length > 0) {
         response.results.forEach((r, i) => {
           const conf = (r.matchConfidence * 100).toFixed(1);
-          const pitch = r.pitchConfidence ? (r.pitchConfidence * 100).toFixed(1) : '?';
-          const rhythm = r.rhythmConfidence ? (r.rhythmConfidence * 100).toFixed(1) : '?';
+          const pitchStr = r.pitchConfidence ? `, pitch: ${(r.pitchConfidence * 100).toFixed(1)}%` : '';
+          const rhythmStr = r.rhythmConfidence ? `, rhythm: ${(r.rhythmConfidence * 100).toFixed(1)}%` : '';
           loggerService.logSystem(
-            `[Rhythm] #${i + 1}: "${r.title}" - ${conf}% (pitch: ${pitch}%, rhythm: ${rhythm}%)`,
+            `#${i + 1}: "${r.title}" - ${conf}%${pitchStr}${rhythmStr}`,
             'success'
           );
         });
-      } else {
-        loggerService.logSystem('[Rhythm] No matches found', 'warning');
       }
-    } else if (rhythmResult.status === 'rejected') {
-      console.error('Rhythm search failed:', rhythmResult.reason);
-      loggerService.logSystem(
-        `[Rhythm] Search failed: ${rhythmResult.reason instanceof Error ? rhythmResult.reason.message : 'Unknown error'}`,
-        'error'
-      );
-      setRhythmResults([]);
+    } catch (error) {
+      console.error('Search failed:', error);
+      loggerService.logSearchResponse({
+        intervals: currentIntervals,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      setResults([]);
     }
-    setIsRhythmSearching(false);
+    setIsSearching(false);
   };
 
-  const hasResults = !isRecording && (currentIntervals.length >= 2 || searchResults.length > 0 || rhythmResults.length > 0);
+  const hasResults = !isRecording && (currentIntervals.length >= 2 || results.length > 0);
 
   return (
     <div className={`min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 ${isConsoleOpen ? 'pb-80' : 'pb-16'}`}>
@@ -223,6 +191,16 @@ function App() {
                     <span className="font-semibold">{currentNotes.length}</span> notes captured,{' '}
                     <span className="font-semibold">{currentIntervals.length}</span> intervals
                   </div>
+                  {currentNotes.length < MIN_NOTES && (
+                    <div className="text-amber-700 font-medium">
+                      — need {MIN_NOTES - currentNotes.length} more note{MIN_NOTES - currentNotes.length !== 1 ? 's' : ''}
+                    </div>
+                  )}
+                  {currentNotes.length >= MIN_NOTES && (
+                    <div className="text-green-700 font-medium">
+                      — searching...
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={handleRecordingToggle}
@@ -234,35 +212,19 @@ function App() {
             </section>
           )}
 
-          {/* Results Section - Side by Side */}
+          {/* Results Section */}
           {hasResults && (
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Pitch-Only Results */}
-              <section className="bg-white rounded-xl shadow-lg p-8">
-                <h2 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">
-                  Pitch Matching
-                </h2>
-                <ResultsList
-                  results={searchResults}
-                  isLoading={isSearching}
-                  queryTime={queryTime}
-                  totalMatches={totalMatches}
-                />
-              </section>
-
-              {/* Pitch + Rhythm Results */}
-              <section className="bg-white rounded-xl shadow-lg p-8">
-                <h2 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">
-                  Pitch + Rhythm Matching
-                </h2>
-                <ResultsList
-                  results={rhythmResults}
-                  isLoading={isRhythmSearching}
-                  queryTime={rhythmQueryTime}
-                  totalMatches={rhythmTotalMatches}
-                />
-              </section>
-            </div>
+            <section className="bg-white rounded-xl shadow-lg p-8">
+              <h2 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">
+                Search Results
+              </h2>
+              <ResultsList
+                results={results}
+                isLoading={isSearching}
+                queryTime={queryTime}
+                totalMatches={totalMatches}
+              />
+            </section>
           )}
 
           {/* Instructions */}
@@ -296,7 +258,7 @@ function App() {
               <div className="mt-8 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
                 <p className="text-sm text-blue-900">
                   <strong>🎵 How it works:</strong> The piano always plays sound, but only captures notes when recording.
-                  The search compares interval sequences (semitone differences). Record at least 3-4 notes for better results!
+                  The search compares interval sequences (semitone differences). You need at least {MIN_NOTES} notes for the search to activate — the more notes you play, the better the results!
                 </p>
               </div>
             </section>
