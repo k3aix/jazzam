@@ -203,14 +203,18 @@ public class SearchService : ISearchService
 
                 if (confidence >= request.MinConfidence)
                 {
+                    // Use pitch score as the main confidence (pitch is primary),
+                    // combined confidence stored separately for tiebreaking
+                    var pitchConfidence = Math.Round(match.PitchScore, 3);
                     results.Add(new SearchResult
                     {
                         Standard = standard,
                         MatchPosition = match.Position,
                         MatchLength = match.MatchLength,
-                        Confidence = Math.Round(confidence, 3),
-                        PitchConfidence = Math.Round(match.PitchScore, 3),
-                        RhythmConfidence = Math.Round(match.RhythmScore, 3)
+                        Confidence = pitchConfidence,
+                        PitchConfidence = pitchConfidence,
+                        RhythmConfidence = Math.Round(match.RhythmScore, 3),
+                        CombinedConfidence = Math.Round(confidence, 3)
                     });
                 }
             }
@@ -219,8 +223,8 @@ public class SearchService : ISearchService
             var deduped = DeduplicateByTitle(results);
 
             var sortedResults = deduped
-                .OrderByDescending(r => r.PitchConfidence)
-                .ThenByDescending(r => r.Confidence)
+                .OrderByDescending(r => r.Confidence)
+                .ThenByDescending(r => r.CombinedConfidence)
                 .ThenBy(r => r.MatchPosition)
                 .Take(request.MaxResults)
                 .ToList();

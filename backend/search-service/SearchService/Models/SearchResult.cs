@@ -8,6 +8,7 @@ public class SearchResult
     public double Confidence { get; set; }
     public double? PitchConfidence { get; set; }
     public double? RhythmConfidence { get; set; }
+    public double? CombinedConfidence { get; set; }
 }
 
 public class SearchResponse
