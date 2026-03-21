@@ -27,6 +27,7 @@ export interface JazzStandard {
   title: string;
   composer: string | null;
   intervalSequence: number[];
+  durationRatios: number[] | null;
 }
 
 export interface TestCase {
@@ -34,6 +35,7 @@ export interface TestCase {
   standardTitle: string;
   originalSequence: number[];
   testSequence: number[];
+  durationRatios: number[] | null;    // Duration ratios for the extracted segment
   extractionStart: number;
   errorsApplied: ErrorDetail[];
 }
@@ -50,10 +52,13 @@ export interface SearchResult {
   title: string;
   confidence: number;
   matchPosition: number;
+  pitchConfidence?: number;
+  rhythmConfidence?: number;
 }
 
 export interface TestResult {
   testCase: TestCase;
+  // Pitch-only results
   searchResults: SearchResult[];
   correctMatch: boolean;           // Did the correct standard appear in results?
   correctMatchRank: number | null; // Position in results (1-based), null if not found
@@ -61,17 +66,35 @@ export interface TestResult {
   topMatchCorrect: boolean;        // Is the top result the correct standard?
   executionTimeMs: number;
   error?: string;
+  // Rhythm results
+  rhythmSearchResults: SearchResult[];
+  rhythmCorrectMatch: boolean;
+  rhythmCorrectMatchRank: number | null;
+  rhythmCorrectMatchConfidence: number | null;
+  rhythmTopMatchCorrect: boolean;
+  rhythmExecutionTimeMs: number;
+  rhythmError?: string;
 }
 
 export interface TestSummary {
   config: TestConfig;
   totalTests: number;
+  // Pitch-only stats
   successfulTests: number;         // Tests where correct standard was found
   topMatchCorrect: number;         // Tests where top result was correct
   averageConfidence: number;       // Average confidence when correct match found
   averageRank: number;             // Average rank when correct match found
   averageExecutionTime: number;
   noMatchCount: number;            // Tests with no results at all
+  // Rhythm stats
+  rhythmSuccessfulTests: number;
+  rhythmTopMatchCorrect: number;
+  rhythmAverageConfidence: number;
+  rhythmAverageRank: number;
+  rhythmAverageExecutionTime: number;
+  rhythmNoMatchCount: number;
+  rhythmTestCount: number;         // How many tests had duration_ratios available
+
   results: TestResult[];
   timestamp: Date;
 }

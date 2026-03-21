@@ -50,7 +50,45 @@ public class SearchController : ControllerBase
 
         if (!response.Success)
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, response);
+            return BadRequest(response);
+        }
+
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Search for jazz standards by interval sequence combined with rhythm (duration ratios)
+    /// </summary>
+    [HttpPost("rhythm")]
+    [ProducesResponseType(typeof(SearchResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<SearchResponse>> SearchByRhythm([FromBody] RhythmSearchRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            _logger.LogWarning("Invalid rhythm search request received");
+            return BadRequest(new SearchResponse
+            {
+                Success = false,
+                Count = 0,
+                ExecutionTimeMs = 0,
+                Data = new List<SearchResult>(),
+                Error = "Invalid request parameters"
+            });
+        }
+
+        _logger.LogInformation(
+            "Received rhythm search request with {IntCount} intervals and {RatioCount} duration ratios",
+            request.Intervals.Length,
+            request.DurationRatios.Length
+        );
+
+        var response = await _searchService.SearchByRhythmAsync(request);
+
+        if (!response.Success)
+        {
+            return BadRequest(response);
         }
 
         return Ok(response);

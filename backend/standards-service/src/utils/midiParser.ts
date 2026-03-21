@@ -11,6 +11,7 @@ interface ParsedMelody {
   title: string;
   notes: MelodyNote[];
   intervalSequence: number[];
+  durationRatios: number[];
   originalNotes: string;
 }
 
@@ -69,6 +70,9 @@ export class MidiParser {
       intervalSequence.push(interval);
     }
 
+    // Calculate duration ratios (quantized IOI ratios)
+    const durationRatios = this.computeDurationRatios(notes);
+
     // Create original notes string
     const originalNotes = notes.map(n => n.name).join(' ');
 
@@ -79,11 +83,14 @@ export class MidiParser {
     console.log(`   Total intervals: ${intervalSequence.length}`);
     console.log(`   Range: ${Math.min(...intervalSequence)} to ${Math.max(...intervalSequence)} semitones`);
     console.log(`   First 10 intervals: [${intervalSequence.slice(0, 10).join(', ')}]`);
+    console.log(`\n🥁 Rhythm Analysis:`);
+    console.log(`   Duration ratios (x4): [${durationRatios.slice(0, 10).join(', ')}${durationRatios.length > 10 ? '...' : ''}]`);
 
     return {
       title,
       notes,
       intervalSequence,
+      durationRatios,
       originalNotes
     };
   }
@@ -113,6 +120,45 @@ INSERT INTO jazz_standards (
   NULL
 );
 `;
+  }
+
+  /**
+   * Compute quantized IOI (Inter-Onset Interval) ratios from note timings.
+   * Each IOI is the time from one note-on to the next, naturally absorbing rests.
+   * Ratios are normalized to the shortest IOI and quantized to musical values.
+   * Stored with x4 factor: quarter=4, eighth=2, half=8, etc.
+   */
+  private computeDurationRatios(notes: MelodyNote[]): number[] {
+    if (notes.length < 2) return [];
+
+    const MUSICAL_VALUES = [0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8];
+
+    // Compute raw IOIs (time between consecutive note onsets)
+    const iois: number[] = [];
+    for (let i = 1; i < notes.length; i++) {
+      iois.push(notes[i].time - notes[i - 1].time);
+    }
+
+    // Find minimum IOI with a floor to avoid near-zero division
+    const minIOI = Math.max(Math.min(...iois), 0.05);
+
+    // Normalize and quantize each IOI
+    return iois.map(ioi => {
+      const ratio = ioi / minIOI;
+
+      // Find closest musical value
+      let closest = MUSICAL_VALUES[0];
+      let minDiff = Math.abs(ratio - closest);
+      for (const val of MUSICAL_VALUES) {
+        const diff = Math.abs(ratio - val);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closest = val;
+        }
+      }
+
+      return Math.round(closest * 4);
+    });
   }
 
   private generateUUID(): string {

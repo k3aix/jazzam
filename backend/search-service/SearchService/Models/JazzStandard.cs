@@ -25,6 +25,9 @@ public class JazzStandard
     [JsonPropertyName("interval_sequence")]
     public int[] IntervalSequence { get; set; } = Array.Empty<int>();
 
+    [JsonPropertyName("duration_ratios")]
+    public int[]? DurationRatios { get; set; }
+
     [JsonPropertyName("original_notes")]
     public string? OriginalNotes { get; set; }
 

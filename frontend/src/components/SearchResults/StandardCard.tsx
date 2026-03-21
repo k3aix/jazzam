@@ -30,6 +30,18 @@ const StandardCard: React.FC<StandardCardProps> = ({ result }) => {
         </div>
       </div>
 
+      {/* Pitch/Rhythm confidence breakdown */}
+      {(result.pitchConfidence != null || result.rhythmConfidence != null) && (
+        <div className="flex gap-3 mb-3 text-xs text-gray-500">
+          {result.pitchConfidence != null && (
+            <span>Pitch: <span className="font-semibold text-gray-700">{Math.round(result.pitchConfidence * 100)}%</span></span>
+          )}
+          {result.rhythmConfidence != null && (
+            <span>Rhythm: <span className="font-semibold text-gray-700">{Math.round(result.rhythmConfidence * 100)}%</span></span>
+          )}
+        </div>
+      )}
+
       {/* Musical details */}
       <div className="flex gap-4 mb-3 text-sm">
         {result.key && (

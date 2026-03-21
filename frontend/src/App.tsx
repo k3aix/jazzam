@@ -6,10 +6,39 @@ import { Note, SearchResult } from './types';
 import apiService from './services/api';
 import loggerService from './services/loggerService';
 
+const MUSICAL_VALUES = [0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8];
+const MIN_NOTES = 6; // Backend requires at least 5 non-zero intervals = 6 notes
+
+function computeDurationRatios(notes: Note[]): number[] {
+  if (notes.length < 2) return [];
+
+  const iois: number[] = [];
+  for (let i = 1; i < notes.length; i++) {
+    iois.push(notes[i].timestamp - notes[i - 1].timestamp);
+  }
+
+  // Normalize by shortest IOI (floor at 50ms to avoid near-zero divides)
+  const minIOI = Math.max(Math.min(...iois), 50);
+
+  return iois.map(ioi => {
+    const ratio = ioi / minIOI;
+    let closest = MUSICAL_VALUES[0];
+    let minDiff = Math.abs(ratio - closest);
+    for (const val of MUSICAL_VALUES) {
+      const diff = Math.abs(ratio - val);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = val;
+      }
+    }
+    return Math.round(closest * 4);
+  });
+}
+
 function App() {
   const [currentNotes, setCurrentNotes] = useState<Note[]>([]);
   const [currentIntervals, setCurrentIntervals] = useState<number[]>([]);
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [queryTime, setQueryTime] = useState<number | undefined>();
   const [totalMatches, setTotalMatches] = useState<number | undefined>();
@@ -26,9 +55,9 @@ function App() {
 
   // Auto-search when intervals change while recording (with debounce)
   useEffect(() => {
-    if (!isRecording || currentIntervals.length < 2) {
+    if (!isRecording || currentNotes.length < MIN_NOTES) {
       if (!isRecording) {
-        setSearchResults([]);
+        setResults([]);
       }
       return;
     }
@@ -46,11 +75,11 @@ function App() {
     loggerService.logRecordingState(newRecordingState);
     if (isRecording) {
       // Stopped recording - do final search if we have notes
-      if (currentIntervals.length >= 2) {
+      if (currentNotes.length >= MIN_NOTES) {
         performSearch();
       }
     }
-  }, [isRecording, currentIntervals]);
+  }, [isRecording, currentIntervals, currentNotes]);
 
   const performSearch = async () => {
     if (currentIntervals.length < 2) {
@@ -60,18 +89,30 @@ function App() {
     setIsSearching(true);
     loggerService.logSearchRequest(currentIntervals);
 
-    try {
-      const response = await apiService.searchByIntervals({
-        intervals: currentIntervals,
-        tolerance: 0,
-        maxResults: 10,
-      });
+    const durationRatios = computeDurationRatios(currentNotes);
+    if (durationRatios.length > 0) {
+      loggerService.logSystem(`Duration ratios played: [${durationRatios.join(', ')}]`);
+    }
 
-      setSearchResults(response.results);
+    try {
+      // Unified search: use rhythm endpoint (includes pitch data) when duration ratios available,
+      // fall back to pitch-only otherwise. Backend sorts by pitch first, rhythm disambiguates.
+      const response = durationRatios.length >= 2
+        ? await apiService.searchByRhythm({
+            intervals: currentIntervals,
+            durationRatios,
+            maxResults: 10,
+          })
+        : await apiService.searchByIntervals({
+            intervals: currentIntervals,
+            tolerance: 0,
+            maxResults: 10,
+          });
+
+      setResults(response.results);
       setQueryTime(response.queryTime);
       setTotalMatches(response.totalMatches);
 
-      // Log search results
       loggerService.logSearchResponse({
         intervals: currentIntervals,
         queryTime: response.queryTime,
@@ -82,17 +123,30 @@ function App() {
           matchPosition: r.matchPosition,
         })),
       });
+
+      if (response.results.length > 0) {
+        response.results.forEach((r, i) => {
+          const conf = (r.matchConfidence * 100).toFixed(1);
+          const pitchStr = r.pitchConfidence ? `, pitch: ${(r.pitchConfidence * 100).toFixed(1)}%` : '';
+          const rhythmStr = r.rhythmConfidence ? `, rhythm: ${(r.rhythmConfidence * 100).toFixed(1)}%` : '';
+          loggerService.logSystem(
+            `#${i + 1}: "${r.title}" - ${conf}%${pitchStr}${rhythmStr}`,
+            'success'
+          );
+        });
+      }
     } catch (error) {
       console.error('Search failed:', error);
       loggerService.logSearchResponse({
         intervals: currentIntervals,
         error: error instanceof Error ? error.message : 'Unknown error',
       });
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
+      setResults([]);
     }
+    setIsSearching(false);
   };
+
+  const hasResults = !isRecording && (currentIntervals.length >= 2 || results.length > 0);
 
   return (
     <div className={`min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 ${isConsoleOpen ? 'pb-80' : 'pb-16'}`}>
@@ -137,6 +191,16 @@ function App() {
                     <span className="font-semibold">{currentNotes.length}</span> notes captured,{' '}
                     <span className="font-semibold">{currentIntervals.length}</span> intervals
                   </div>
+                  {currentNotes.length < MIN_NOTES && (
+                    <div className="text-amber-700 font-medium">
+                      — need {MIN_NOTES - currentNotes.length} more note{MIN_NOTES - currentNotes.length !== 1 ? 's' : ''}
+                    </div>
+                  )}
+                  {currentNotes.length >= MIN_NOTES && (
+                    <div className="text-green-700 font-medium">
+                      — searching...
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={handleRecordingToggle}
@@ -149,10 +213,13 @@ function App() {
           )}
 
           {/* Results Section */}
-          {!isRecording && (currentIntervals.length >= 2 || searchResults.length > 0) && (
+          {hasResults && (
             <section className="bg-white rounded-xl shadow-lg p-8">
+              <h2 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">
+                Search Results
+              </h2>
               <ResultsList
-                results={searchResults}
+                results={results}
                 isLoading={isSearching}
                 queryTime={queryTime}
                 totalMatches={totalMatches}
@@ -191,25 +258,13 @@ function App() {
               <div className="mt-8 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
                 <p className="text-sm text-blue-900">
                   <strong>🎵 How it works:</strong> The piano always plays sound, but only captures notes when recording.
-                  The search compares interval sequences (semitone differences). Record at least 3-4 notes for better results!
+                  The search compares interval sequences (semitone differences). You need at least {MIN_NOTES} notes for the search to activate — the more notes you play, the better the results!
                 </p>
               </div>
             </section>
           )}
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="bg-white border-t-2 border-gray-200 mt-12">
-        <div className="max-w-7xl mx-auto px-4 py-6 text-center text-gray-600 text-sm">
-          <p>
-            Jazz Melody Finder - A learning project for microservices, cloud infrastructure, and DevOps
-          </p>
-          <p className="mt-1 text-xs text-gray-500">
-            Technologies: React, TypeScript, C#, PostgreSQL, Kubernetes, AWS
-          </p>
-        </div>
-      </footer>
 
       {/* Logger Console */}
       <LoggerConsole

@@ -49,6 +49,10 @@ coverage/
 tmp/
 temp/
 
+# Dev startup files
+.pids/
+.logs/
+
 # .NET
 bin/
 obj/
