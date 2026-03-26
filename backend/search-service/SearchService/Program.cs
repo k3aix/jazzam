@@ -1,5 +1,7 @@
 using SearchService.Models;
 using SearchService.Services;
+using Serilog;
+using Serilog.Events;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -55,10 +57,21 @@ builder.Services.AddHttpClient<IStandardsClient, StandardsClient>(client =>
 // Register application services
 builder.Services.AddScoped<ISearchService, SearchService.Services.SearchService>();
 
-// Add logging
+// Configure Serilog
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Warning()
+    .MinimumLevel.Override("SearchService.Controllers", LogEventLevel.Information)
+    .Enrich.FromLogContext()
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .WriteTo.File(
+        path: "/app/logs/search-.log",
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 30,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .CreateLogger();
+
 builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
-builder.Logging.AddDebug();
+builder.Host.UseSerilog();
 
 var app = builder.Build();
 

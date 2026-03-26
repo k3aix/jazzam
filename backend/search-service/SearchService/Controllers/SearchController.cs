@@ -53,6 +53,14 @@ public class SearchController : ControllerBase
             return BadRequest(response);
         }
 
+        for (int i = 0; i < response.Data.Count; i++)
+        {
+            var r = response.Data[i];
+            _logger.LogInformation(
+                "  #{Rank} {Title} — {Confidence:P0}",
+                i + 1, r.Standard.Title, r.Confidence);
+        }
+
         return Ok(response);
     }
 
@@ -89,6 +97,15 @@ public class SearchController : ControllerBase
         if (!response.Success)
         {
             return BadRequest(response);
+        }
+
+        for (int i = 0; i < response.Data.Count; i++)
+        {
+            var r = response.Data[i];
+            _logger.LogInformation(
+                "  #{Rank} {Title} — {Confidence:P0} (pitch {Pitch:P0}, rhythm {Rhythm:P0})",
+                i + 1, r.Standard.Title, r.Confidence,
+                r.PitchConfidence ?? 0, r.RhythmConfidence ?? 0);
         }
 
         return Ok(response);
