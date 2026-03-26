@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import Piano from './components/Piano/Piano';
 import ResultsList from './components/SearchResults/ResultsList';
-import LoggerConsole from './components/LoggerConsole/LoggerConsole';
 import { Note, SearchResult } from './types';
 import apiService from './services/api';
 import loggerService from './services/loggerService';
@@ -43,7 +42,6 @@ function App() {
   const [queryTime, setQueryTime] = useState<number | undefined>();
   const [totalMatches, setTotalMatches] = useState<number | undefined>();
   const [isRecording, setIsRecording] = useState(false);
-  const [isConsoleOpen, setIsConsoleOpen] = useState(true);
 
   const handleMelodyChange = useCallback((notes: Note[], intervals: number[]) => {
     setCurrentNotes(notes);
@@ -146,31 +144,49 @@ function App() {
     setIsSearching(false);
   };
 
+  const handleConfirm = useCallback((result: SearchResult) => {
+    const durationRatios = computeDurationRatios(currentNotes);
+    apiService.submitFeedback({
+      standardId: result.id,
+      title: result.title,
+      confidence: result.matchConfidence,
+      intervals: currentIntervals,
+      durationRatios,
+    });
+  }, [currentNotes, currentIntervals]);
+
+  const handleNoneCorrect = useCallback(() => {
+    const durationRatios = computeDurationRatios(currentNotes);
+    apiService.submitFeedback({
+      standardId: 'none',
+      title: 'NONE_CORRECT',
+      confidence: 0,
+      intervals: currentIntervals,
+      durationRatios,
+    });
+  }, [currentNotes, currentIntervals]);
+
   const hasResults = !isRecording && (currentIntervals.length >= 2 || results.length > 0);
 
   return (
-    <div className={`min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 ${isConsoleOpen ? 'pb-80' : 'pb-16'}`}>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b-2 border-blue-200">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-4xl font-bold text-gray-900">
-                Jazz Melody Finder
-              </h1>
-              <p className="text-gray-600 mt-1">
-                Play a melody and discover which jazz standard it belongs to
-              </p>
-            </div>
-            </div>
+      <header className="border-b border-slate-700">
+        <div className="max-w-5xl mx-auto px-6 py-8">
+          <h1 className="text-4xl font-bold tracking-tight text-white">
+            Jazz<span className="text-amber-400">am</span>
+          </h1>
+          <p className="text-slate-400 mt-1 text-sm tracking-wide uppercase">
+            Melody identification for jazz standards
+          </p>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <div className="space-y-8">
+      <main className="max-w-5xl mx-auto px-6 py-10">
+        <div className="space-y-6">
           {/* Piano Section */}
-          <section className="bg-white rounded-xl shadow-lg p-8">
+          <section className="bg-slate-800 rounded-2xl shadow-2xl p-8 border border-slate-700">
             <Piano
               onMelodyChange={handleMelodyChange}
               isRecording={isRecording}
@@ -180,33 +196,28 @@ function App() {
 
           {/* Recording Status */}
           {currentNotes.length > 0 && isRecording && (
-            <section className="bg-red-50 border-2 border-red-200 rounded-xl shadow-lg p-6">
+            <section className="bg-slate-800 border border-red-500/40 rounded-2xl shadow-lg px-6 py-4">
               <div className="flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className="w-4 h-4 bg-red-600 rounded-full animate-pulse"></span>
-                    <span className="font-semibold text-red-900">Recording in progress</span>
-                  </div>
-                  <div className="text-gray-700">
-                    <span className="font-semibold">{currentNotes.length}</span> notes captured,{' '}
-                    <span className="font-semibold">{currentIntervals.length}</span> intervals
-                  </div>
+                <div className="flex items-center gap-4">
+                  <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
+                  <span className="font-semibold text-white">Recording</span>
+                  <span className="text-slate-400 text-sm">
+                    {currentNotes.length} notes
+                  </span>
                   {currentNotes.length < MIN_NOTES && (
-                    <div className="text-amber-700 font-medium">
-                      — need {MIN_NOTES - currentNotes.length} more note{MIN_NOTES - currentNotes.length !== 1 ? 's' : ''}
-                    </div>
+                    <span className="text-amber-400 text-sm">
+                      — {MIN_NOTES - currentNotes.length} more needed
+                    </span>
                   )}
                   {currentNotes.length >= MIN_NOTES && (
-                    <div className="text-green-700 font-medium">
-                      — searching...
-                    </div>
+                    <span className="text-emerald-400 text-sm">— searching...</span>
                   )}
                 </div>
                 <button
                   onClick={handleRecordingToggle}
-                  className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-semibold"
+                  className="px-5 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-semibold tracking-wide"
                 >
-                  STOP & SEARCH
+                  STOP
                 </button>
               </div>
             </section>
@@ -214,63 +225,53 @@ function App() {
 
           {/* Results Section */}
           {hasResults && (
-            <section className="bg-white rounded-xl shadow-lg p-8">
-              <h2 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">
-                Search Results
-              </h2>
+            <section className="bg-slate-800 rounded-2xl shadow-2xl p-8 border border-slate-700">
               <ResultsList
                 results={results}
                 isLoading={isSearching}
                 queryTime={queryTime}
                 totalMatches={totalMatches}
+                onConfirm={handleConfirm}
+                onNoneCorrect={handleNoneCorrect}
               />
             </section>
           )}
 
           {/* Instructions */}
           {currentNotes.length === 0 && (
-            <section className="bg-white rounded-xl shadow-lg p-8">
-              <h2 className="text-2xl font-bold text-gray-800 mb-4">How to Use</h2>
+            <section className="bg-slate-800/50 rounded-2xl p-8 border border-slate-700/50">
+              <h2 className="text-lg font-semibold text-white mb-6">How to use</h2>
               <div className="grid md:grid-cols-3 gap-6">
-                <div className="flex flex-col items-center text-center">
-                  <div className="text-4xl mb-3">🎹</div>
-                  <h3 className="font-semibold text-lg mb-2">1. Play Freely</h3>
-                  <p className="text-gray-600">
-                    Click the piano keys to hear sounds. Play around and practice!
+                <div className="flex flex-col gap-2">
+                  <div className="text-2xl">🎹</div>
+                  <h3 className="font-semibold text-slate-200">1. Play freely</h3>
+                  <p className="text-slate-400 text-sm">
+                    Click the piano keys to hear sounds. Practice without recording.
                   </p>
                 </div>
-                <div className="flex flex-col items-center text-center">
-                  <div className="text-4xl mb-3">🔴</div>
-                  <h3 className="font-semibold text-lg mb-2">2. Start Recording</h3>
-                  <p className="text-gray-600">
-                    Click "START RECORDING" and play a melody you want to identify
+                <div className="flex flex-col gap-2">
+                  <div className="text-2xl">🔴</div>
+                  <h3 className="font-semibold text-slate-200">2. Start recording</h3>
+                  <p className="text-slate-400 text-sm">
+                    Hit "START RECORDING" and play the melody you want to identify.
                   </p>
                 </div>
-                <div className="flex flex-col items-center text-center">
-                  <div className="text-4xl mb-3">📖</div>
-                  <h3 className="font-semibold text-lg mb-2">3. View Results</h3>
-                  <p className="text-gray-600">
-                    Stop recording to see matched jazz standards with confidence scores
+                <div className="flex flex-col gap-2">
+                  <div className="text-2xl">📖</div>
+                  <h3 className="font-semibold text-slate-200">3. View results</h3>
+                  <p className="text-slate-400 text-sm">
+                    Stop recording to see matched jazz standards with confidence scores.
                   </p>
                 </div>
               </div>
-
-              <div className="mt-8 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
-                <p className="text-sm text-blue-900">
-                  <strong>🎵 How it works:</strong> The piano always plays sound, but only captures notes when recording.
-                  The search compares interval sequences (semitone differences). You need at least {MIN_NOTES} notes for the search to activate — the more notes you play, the better the results!
-                </p>
-              </div>
+              <p className="mt-6 text-slate-500 text-xs">
+                You need at least {MIN_NOTES} notes to trigger a search — the more you play, the better the results.
+              </p>
             </section>
           )}
         </div>
       </main>
 
-      {/* Logger Console */}
-      <LoggerConsole
-        isOpen={isConsoleOpen}
-        onToggle={() => setIsConsoleOpen(prev => !prev)}
-      />
     </div>
   );
 }

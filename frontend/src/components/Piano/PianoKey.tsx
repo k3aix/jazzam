@@ -6,7 +6,7 @@ interface PianoKeyProps {
   onNoteStart: (note: string, frequency: number) => void;
   onNoteEnd: (note: string) => void;
   isActive?: boolean;
-  keyboardKey?: string | null; // Keyboard shortcut to display
+  keyboardKey?: string | null;
 }
 
 const PianoKey: React.FC<PianoKeyProps> = ({
@@ -14,7 +14,6 @@ const PianoKey: React.FC<PianoKeyProps> = ({
   onNoteStart,
   onNoteEnd,
   isActive = false,
-  keyboardKey = null
 }) => {
   const [isPressed, setIsPressed] = useState(false);
 
@@ -54,12 +53,6 @@ const PianoKey: React.FC<PianoKeyProps> = ({
 
   const colorClasses = keyData.type === 'white' ? whiteKeyColor : blackKeyColor;
 
-  const textColor = (isPressed || isActive) && keyData.type === 'white'
-    ? 'text-white text-xs font-bold'
-    : keyData.type === 'white'
-    ? 'text-gray-600 text-xs'
-    : 'text-gray-300 text-[10px]';
-
   return (
     <div
       className={`${baseClasses} ${colorClasses} cursor-pointer transition-all duration-150 select-none flex items-end justify-center pb-2`}
@@ -70,15 +63,7 @@ const PianoKey: React.FC<PianoKeyProps> = ({
       aria-label={`Piano key ${keyData.note}`}
       tabIndex={0}
     >
-      <div className="flex flex-col items-center gap-0.5">
-        <span className={textColor}>{keyData.note}</span>
-        {keyboardKey && (
-          <span className={`text-xs font-bold ${keyData.type === 'white' ? 'text-blue-500' : 'text-blue-300'}`}>
-            {keyboardKey}
-          </span>
-        )}
       </div>
-    </div>
   );
 };
 

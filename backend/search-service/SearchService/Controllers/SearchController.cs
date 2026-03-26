@@ -42,8 +42,8 @@ public class SearchController : ControllerBase
         }
 
         _logger.LogInformation(
-            "Received search request with {Count} intervals",
-            request.Intervals.Length
+            "Search: intervals=[{Intervals}]",
+            string.Join(", ", request.Intervals)
         );
 
         var response = await _searchService.SearchByIntervalsAsync(request);
@@ -79,9 +79,9 @@ public class SearchController : ControllerBase
         }
 
         _logger.LogInformation(
-            "Received rhythm search request with {IntCount} intervals and {RatioCount} duration ratios",
-            request.Intervals.Length,
-            request.DurationRatios.Length
+            "RhythmSearch: intervals=[{Intervals}] ratios=[{Ratios}]",
+            string.Join(", ", request.Intervals),
+            string.Join(", ", request.DurationRatios)
         );
 
         var response = await _searchService.SearchByRhythmAsync(request);
@@ -92,6 +92,24 @@ public class SearchController : ControllerBase
         }
 
         return Ok(response);
+    }
+
+    /// <summary>
+    /// User confirmation feedback - logs which standard the user confirmed as correct
+    /// </summary>
+    [HttpPost("feedback")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public IActionResult SubmitFeedback([FromBody] FeedbackRequest request)
+    {
+        _logger.LogInformation(
+            "FEEDBACK: confirmed=\"{Title}\" (id={Id}) confidence={Confidence:P1} intervals=[{Intervals}] ratios=[{Ratios}]",
+            request.Title,
+            request.StandardId,
+            request.Confidence,
+            string.Join(", ", request.Intervals ?? Array.Empty<int>()),
+            string.Join(", ", request.DurationRatios ?? Array.Empty<int>())
+        );
+        return Ok(new { success = true });
     }
 
     /// <summary>

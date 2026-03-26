@@ -15,7 +15,6 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
   const [playedNotes, setPlayedNotes] = useState<Note[]>([]);
   const [startTime, setStartTime] = useState(Date.now());
   const [audioInitialized, setAudioInitialized] = useState(false);
-  const [currentOctave, setCurrentOctave] = useState(4);
   const [keyboardLayout, setKeyboardLayout] = useState<KeyboardLayout>('QWERTY');
   const [activeNotes, setActiveNotes] = useState<Set<string>>(new Set()); // Track currently playing notes for visual feedback
   const pressedKeys = useRef<Set<string>>(new Set()); // Track pressed keyboard keys
@@ -136,13 +135,11 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
   };
 
   const handleOctaveUp = useCallback(() => {
-    const newOctave = keyboardMapping.octaveUp();
-    setCurrentOctave(newOctave);
+    keyboardMapping.octaveUp();
   }, []);
 
   const handleOctaveDown = useCallback(() => {
-    const newOctave = keyboardMapping.octaveDown();
-    setCurrentOctave(newOctave);
+    keyboardMapping.octaveDown();
   }, []);
 
   const handleKeyboardLayoutChange = (layout: KeyboardLayout) => {
@@ -301,85 +298,25 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="text-center">
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">Virtual Piano</h2>
-        <p className="text-gray-600">
-          {isRecording
-            ? '🔴 Recording - Play your melody to identify it'
-            : 'Play freely - Click keys or use your keyboard'}
-        </p>
-        <div className="mt-3 flex items-center justify-center gap-6 text-sm">
-          <div className="flex items-center gap-2">
-            <span className="text-gray-700 font-medium">Keyboard Layout:</span>
-            <select
-              value={keyboardLayout}
-              onChange={(e) => handleKeyboardLayoutChange(e.target.value as KeyboardLayout)}
-              className="px-3 py-1.5 border-2 border-gray-300 rounded-lg bg-white text-gray-700 font-medium hover:border-blue-400 focus:border-blue-500 focus:outline-none transition-colors cursor-pointer"
-            >
-              <option value="QWERTY">QWERTY (US/UK)</option>
-              <option value="QWERTZ">QWERTZ (German)</option>
-              <option value="AZERTY">AZERTY (French)</option>
-            </select>
-          </div>
-          <div className="border-l-2 border-gray-300 pl-6 flex items-center gap-4">
-            <span className="text-blue-600 font-medium">
-              Octave: C{currentOctave}
-            </span>
-            <span className="text-gray-500">
-              , / . to shift
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Piano keyboard */}
-      <div ref={scrollContainerRef} className="w-full overflow-x-auto">
-        <div className="bg-gray-200 p-6 rounded-lg shadow-2xl inline-block min-w-fit">
-          {renderKeys()}
-        </div>
-      </div>
-
-      {/* Controls */}
-      <div className="flex flex-col gap-4 items-center self-center w-full max-w-2xl">
-        {/* Octave controls */}
-        <div className="flex items-center gap-4">
-          <button
-            onClick={handleOctaveDown}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-semibold"
-            disabled={currentOctave <= 2}
-          >
-            ← Octave Down (,)
-          </button>
-          <span className="text-lg font-bold text-gray-700 min-w-20 text-center">
-            C{currentOctave} - B{currentOctave}
-          </span>
-          <button
-            onClick={handleOctaveUp}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-semibold"
-            disabled={currentOctave >= 6}
-          >
-            Octave Up (.) →
-          </button>
-        </div>
-
-        {/* Recording controls */}
-        <div className="flex gap-4 items-center">
+      {/* Top controls bar */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-3">
           <button
             onClick={handleRecordingToggle}
-            className={`px-8 py-3 rounded-lg font-semibold transition-all flex items-center gap-2 ${
+            className={`px-6 py-2.5 rounded-lg font-semibold transition-all flex items-center gap-2 text-sm tracking-wide ${
               isRecording
-                ? 'bg-red-600 text-white hover:bg-red-700 animate-pulse'
-                : 'bg-gray-700 text-white hover:bg-gray-800'
+                ? 'bg-red-600 text-white hover:bg-red-700'
+                : 'bg-amber-400 text-slate-900 hover:bg-amber-300'
             }`}
           >
             {isRecording ? (
               <>
-                <span className="w-3 h-3 bg-white rounded-full animate-pulse"></span>
+                <span className="w-2.5 h-2.5 bg-white rounded-full animate-pulse"></span>
                 RECORDING
               </>
             ) : (
               <>
-                <span className="w-3 h-3 bg-red-500 rounded-full"></span>
+                <span className="w-2.5 h-2.5 bg-slate-900 rounded-full"></span>
                 START RECORDING
               </>
             )}
@@ -388,59 +325,40 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
           {playedNotes.length > 0 && (
             <button
               onClick={handleReset}
-              className="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+              className="px-4 py-2.5 bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition-colors text-sm"
             >
-              Clear Melody
+              Clear
             </button>
           )}
 
           {!audioInitialized && (
-            <span className="text-sm text-gray-500 italic">
+            <span className="text-xs text-slate-500 italic">
               Click anywhere to enable sound
             </span>
           )}
+        </div>
 
+        <div className="flex items-center gap-4 text-sm">
+          <select
+            value={keyboardLayout}
+            onChange={(e) => handleKeyboardLayoutChange(e.target.value as KeyboardLayout)}
+            className="px-3 py-1.5 border border-slate-600 rounded-lg bg-slate-700 text-slate-300 focus:outline-none focus:border-amber-400 cursor-pointer text-xs"
+          >
+            <option value="QWERTY">QWERTY</option>
+            <option value="QWERTZ">QWERTZ</option>
+            <option value="AZERTY">AZERTY</option>
+          </select>
         </div>
       </div>
 
-      {/* Display played notes */}
-      {playedNotes.length > 0 && (
-        <div className="bg-white p-4 rounded-lg shadow-md self-center w-full max-w-2xl">
-          <h3 className="font-semibold mb-2 text-gray-700">Played Notes:</h3>
-          <div className="flex flex-wrap gap-2 mb-3">
-            {playedNotes.map((note, i) => (
-              <span
-                key={i}
-                className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-mono"
-              >
-                {note.name}
-              </span>
-            ))}
-          </div>
-
-          {playedNotes.length > 1 && (
-            <>
-              <h3 className="font-semibold mb-2 text-gray-700">Interval Sequence:</h3>
-              <div className="flex flex-wrap gap-2">
-                {calculateIntervals(playedNotes).map((interval, i) => (
-                  <span
-                    key={i}
-                    className={`px-3 py-1 rounded-full text-sm font-mono ${
-                      interval > 0
-                        ? 'bg-green-100 text-green-800'
-                        : interval < 0
-                        ? 'bg-red-100 text-red-800'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}
-                  >
-                    {interval > 0 ? '+' : ''}{interval}
-                  </span>
-                ))}
-              </div>
-            </>
-          )}
+      {/* Piano keyboard */}
+      <div ref={scrollContainerRef} className="w-full overflow-x-auto">
+        <div className="bg-slate-700 p-4 rounded-xl shadow-2xl inline-block min-w-fit">
+          {renderKeys()}
         </div>
-      )}
+      </div>
+
+
     </div>
   );
 };

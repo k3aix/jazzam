@@ -126,6 +126,29 @@ class ApiService {
   }
 
   /**
+   * Submit user confirmation feedback
+   */
+  async submitFeedback(params: {
+    standardId: string;
+    title: string;
+    confidence: number;
+    intervals: number[];
+    durationRatios: number[];
+  }): Promise<void> {
+    try {
+      await axios.post(`${SEARCH_SERVICE_URL}/search/feedback`, {
+        standardId: params.standardId,
+        title: params.title,
+        confidence: params.confidence,
+        intervals: params.intervals,
+        durationRatios: params.durationRatios,
+      });
+    } catch {
+      // feedback is best-effort, don't throw
+    }
+  }
+
+  /**
    * Get all jazz standards (paginated)
    * Uses Standards Service directly
    */

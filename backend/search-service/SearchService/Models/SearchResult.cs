@@ -11,6 +11,15 @@ public class SearchResult
     public double? CombinedConfidence { get; set; }
 }
 
+public class FeedbackRequest
+{
+    public string StandardId { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public double Confidence { get; set; }
+    public int[]? Intervals { get; set; }
+    public int[]? DurationRatios { get; set; }
+}
+
 public class SearchResponse
 {
     public bool Success { get; set; }

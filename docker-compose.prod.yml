@@ -33,7 +33,7 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       CORS_ORIGIN: "*"
     volumes:
-      - ./midi-files:/app/midi-files:ro
+      - ./midi-files:/app/midi-files
     depends_on:
       postgres:
         condition: service_healthy
