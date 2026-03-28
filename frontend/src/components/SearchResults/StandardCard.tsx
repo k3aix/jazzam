@@ -28,14 +28,9 @@ const StandardCard: React.FC<StandardCardProps> = ({ result, onConfirm }) => {
   };
 
   return (
-    <div
-      onClick={!confirmed ? handleConfirm : undefined}
-      className={`bg-slate-900 border rounded-xl p-5 transition-all duration-200 hover:shadow-lg ${
-        confirmed
-          ? 'border-emerald-500/60 shadow-emerald-500/10 cursor-default'
-          : 'border-slate-700 hover:border-amber-400/40 hover:shadow-amber-400/5 cursor-pointer'
-      }`}
-    >
+    <div className={`bg-slate-900 border rounded-xl p-5 transition-all duration-200 ${
+      confirmed ? 'border-emerald-500/60' : 'border-slate-700'
+    }`}>
       {/* Header */}
       <div className="flex justify-between items-start mb-3">
         <div className="flex-1 min-w-0 pr-4">
@@ -48,7 +43,7 @@ const StandardCard: React.FC<StandardCardProps> = ({ result, onConfirm }) => {
       </div>
 
       {/* Confidence bar */}
-      <div className="h-1 bg-slate-700 rounded-full mb-4 overflow-hidden">
+      <div className="h-1 bg-slate-700 rounded-full mb-3 overflow-hidden">
         <div
           className={`h-full rounded-full ${getBarColor(result.matchConfidence)}`}
           style={{ width: `${confidencePercentage}%` }}
@@ -67,13 +62,20 @@ const StandardCard: React.FC<StandardCardProps> = ({ result, onConfirm }) => {
         </div>
       )}
 
-      {/* Footer: key + confirm indicator */}
-      <div className="flex justify-between items-center text-xs text-slate-500 mt-2">
-        <div className="flex gap-3">
+      {/* Footer: key + confirm button */}
+      <div className="flex justify-between items-center mt-2">
+        <div className="text-xs text-slate-500">
           {result.key && <span>Key <span className="text-slate-300 font-mono">{result.key}</span></span>}
         </div>
-        {confirmed && (
-          <span className="text-emerald-400 font-semibold">✓ Confirmed</span>
+        {confirmed ? (
+          <span className="text-emerald-400 text-sm font-semibold">✓ Found it!</span>
+        ) : (
+          <button
+            onClick={handleConfirm}
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-colors"
+          >
+            This is it!
+          </button>
         )}
       </div>
     </div>
