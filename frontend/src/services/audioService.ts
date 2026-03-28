@@ -10,7 +10,6 @@ class AudioService {
     oscillators: OscillatorNode[];
     gain: GainNode;
   }> = new Map();
-  private pendingNotes: Map<string, { frequency: number; duration: number }> = new Map();
 
   initialize(): void {
     if (this.audioContext) return;
@@ -19,7 +18,14 @@ class AudioService {
     this.masterGain = this.audioContext.createGain();
     this.masterGain.gain.value = 0.3;
     this.masterGain.connect(this.audioContext.destination);
-    console.log('[Audio] Context created, state:', this.audioContext.state);
+
+    // Safari requires playing actual audio within the user gesture to unlock AudioContext.
+    // A 1-sample silent buffer is enough — this must happen synchronously here.
+    const silentBuffer = this.audioContext.createBuffer(1, 1, this.audioContext.sampleRate);
+    const silentSource = this.audioContext.createBufferSource();
+    silentSource.buffer = silentBuffer;
+    silentSource.connect(this.audioContext.destination);
+    silentSource.start(0);
   }
 
   playNote(note: string, frequency: number, duration: number = 0): void {
@@ -31,17 +37,9 @@ class AudioService {
       return;
     }
 
-    // If context is suspended (Safari/Chrome first interaction), queue the note
+    // resume() is a no-op if already running; needed for Chrome/Firefox after tab switch
     if (this.audioContext.state === 'suspended') {
-      this.pendingNotes.set(note, { frequency, duration });
-      this.audioContext.resume().then(() => {
-        const pending = this.pendingNotes.get(note);
-        if (pending) {
-          this.pendingNotes.delete(note);
-          this.startOscillators(note, pending.frequency, pending.duration);
-        }
-      });
-      return;
+      this.audioContext.resume();
     }
 
     this.startOscillators(note, frequency, duration);
@@ -50,7 +48,8 @@ class AudioService {
   private startOscillators(note: string, frequency: number, duration: number): void {
     if (!this.audioContext || !this.masterGain) return;
 
-    this.stopNote(note);
+    // Quick fade-out previous instance of same note to avoid clicks
+    this.stopNote(note, true);
 
     const ctx = this.audioContext;
     const now = ctx.currentTime;
@@ -91,18 +90,20 @@ class AudioService {
     }
   }
 
-  stopNote(note: string): void {
-    this.pendingNotes.delete(note); // cancel if not yet started
+  // immediate=true: 8ms fade (note interrupted by new one — no click)
+  // immediate=false: 200ms fade (key released — piano sustain tail)
+  stopNote(note: string, immediate = false): void {
     const active = this.activeOscillators.get(note);
     if (!active || !this.audioContext) return;
 
     const now = this.audioContext.currentTime;
+    const fadeTime = immediate ? 0.008 : 0.2;
 
     active.gain.gain.cancelScheduledValues(now);
     active.gain.gain.setValueAtTime(active.gain.gain.value, now);
-    active.gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+    active.gain.gain.exponentialRampToValueAtTime(0.001, now + fadeTime);
 
-    active.oscillators.forEach(osc => osc.stop(now + 0.2));
+    active.oscillators.forEach(osc => osc.stop(now + fadeTime));
     this.activeOscillators.delete(note);
   }
 
