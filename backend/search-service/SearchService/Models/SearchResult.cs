@@ -18,6 +18,9 @@ public class FeedbackRequest
     public double Confidence { get; set; }
     public int[]? Intervals { get; set; }
     public int[]? DurationRatios { get; set; }
+    public int? MatchPosition { get; set; }
+    public int? MatchLength { get; set; }
+    public int[]? MatchedDbIntervals { get; set; }
 }
 
 public class SearchResponse

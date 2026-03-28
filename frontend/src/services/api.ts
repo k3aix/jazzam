@@ -57,6 +57,7 @@ class ApiService {
         timeSignature: item.standard.time_signature,
         matchConfidence: item.confidence,
         matchPosition: item.matchPosition,
+        matchLength: item.matchLength,
         intervalSequence: item.standard.interval_sequence,
         bookSource: item.standard.book_source || undefined,
         pageNumber: item.standard.page_number || undefined,
@@ -104,6 +105,7 @@ class ApiService {
         timeSignature: item.standard.time_signature,
         matchConfidence: item.confidence,
         matchPosition: item.matchPosition,
+        matchLength: item.matchLength,
         intervalSequence: item.standard.interval_sequence,
         bookSource: item.standard.book_source || undefined,
         pageNumber: item.standard.page_number || undefined,
@@ -134,6 +136,9 @@ class ApiService {
     confidence: number;
     intervals: number[];
     durationRatios: number[];
+    matchPosition?: number;
+    matchLength?: number;
+    matchedDbIntervals?: number[];
   }): Promise<void> {
     try {
       await axios.post(`${SEARCH_SERVICE_URL}/search/feedback`, {
@@ -142,6 +147,9 @@ class ApiService {
         confidence: params.confidence,
         intervals: params.intervals,
         durationRatios: params.durationRatios,
+        matchPosition: params.matchPosition,
+        matchLength: params.matchLength,
+        matchedDbIntervals: params.matchedDbIntervals,
       });
     } catch {
       // feedback is best-effort, don't throw
@@ -168,6 +176,7 @@ class ApiService {
         timeSignature: standard.time_signature,
         matchConfidence: 1.0,
         matchPosition: 0,
+        matchLength: 0,
         intervalSequence: standard.interval_sequence,
         bookSource: standard.book_source || undefined,
         pageNumber: standard.page_number || undefined,
@@ -198,6 +207,7 @@ class ApiService {
         timeSignature: standard.time_signature,
         matchConfidence: 1.0,
         matchPosition: 0,
+        matchLength: 0,
         intervalSequence: standard.interval_sequence,
         bookSource: standard.book_source || undefined,
         pageNumber: standard.page_number || undefined,

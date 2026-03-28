@@ -42,6 +42,7 @@ export interface SearchResult {
   timeSignature?: string;
   matchConfidence: number;      // 0-1 confidence score
   matchPosition: number;        // Position in song where match starts (note index)
+  matchLength: number;          // Number of intervals matched
   intervalSequence: number[];   // Full interval sequence of the standard
   bookSource?: string;          // Which Real Book
   pageNumber?: number;

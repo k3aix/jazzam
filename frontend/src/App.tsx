@@ -146,12 +146,19 @@ function App() {
 
   const handleConfirm = useCallback((result: SearchResult) => {
     const durationRatios = computeDurationRatios(currentNotes);
+    const matchedDbIntervals = result.intervalSequence.slice(
+      result.matchPosition,
+      result.matchPosition + result.matchLength
+    );
     apiService.submitFeedback({
       standardId: result.id,
       title: result.title,
       confidence: result.matchConfidence,
       intervals: currentIntervals,
       durationRatios,
+      matchPosition: result.matchPosition,
+      matchLength: result.matchLength,
+      matchedDbIntervals,
     });
   }, [currentNotes, currentIntervals]);
 

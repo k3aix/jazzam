@@ -354,7 +354,7 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
       </div>
 
       {/* Piano keyboard */}
-      <div ref={scrollContainerRef} className="w-full overflow-x-auto">
+      <div ref={scrollContainerRef} className="w-full overflow-x-auto select-none">
         <div className="bg-slate-700 p-4 rounded-xl shadow-2xl inline-block min-w-fit">
           {renderKeys()}
         </div>

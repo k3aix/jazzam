@@ -17,11 +17,34 @@ public class SearchController : ControllerBase
         _logger = logger;
     }
 
-    /// <summary>
-    /// Search for jazz standards by interval sequence
-    /// </summary>
-    /// <param name="request">Search request with intervals and parameters</param>
-    /// <returns>List of matching jazz standards with confidence scores</returns>
+    private string GetClientContext()
+    {
+        var ua = Request.Headers["User-Agent"].ToString();
+        var country = Request.Headers["CF-IPCountry"].FirstOrDefault() ?? "??";
+
+        string browser;
+        string device;
+
+        if (ua.Contains("OPR/") || ua.Contains("Opera")) browser = "Opera";
+        else if (ua.Contains("Edg/")) browser = "Edge";
+        else if (ua.Contains("Vivaldi")) browser = "Vivaldi";
+        else if (ua.Contains("Firefox/")) browser = "Firefox";
+        else if (ua.Contains("Chrome/") && !ua.Contains("Chromium")) browser = "Chrome";
+        else if (ua.Contains("Safari/") && !ua.Contains("Chrome")) browser = "Safari";
+        else if (ua.Contains("Chromium/")) browser = "Chromium";
+        else browser = "Unknown";
+
+        // CF-Device-Type correctly identifies iPads (iPadOS 13+ sends Desktop UA)
+        var cfDevice = Request.Headers["CF-Device-Type"].FirstOrDefault() ?? "";
+        if (ua.Contains("iPhone")) device = "iPhone";
+        else if (ua.Contains("iPad") || cfDevice == "tablet") device = "iPad";
+        else if (ua.Contains("Android") || cfDevice == "mobile") device = "Android";
+        else if (cfDevice == "desktop") device = "Desktop";
+        else device = "Desktop";
+
+        return $"[{country} | {browser} | {device}]";
+    }
+
     [HttpPost]
     [ProducesResponseType(typeof(SearchResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -42,16 +65,15 @@ public class SearchController : ControllerBase
         }
 
         _logger.LogInformation(
-            "Search: intervals=[{Intervals}]",
+            "Search {Context}: intervals=[{Intervals}]",
+            GetClientContext(),
             string.Join(", ", request.Intervals)
         );
 
         var response = await _searchService.SearchByIntervalsAsync(request);
 
         if (!response.Success)
-        {
             return BadRequest(response);
-        }
 
         for (int i = 0; i < response.Data.Count; i++)
         {
@@ -64,9 +86,6 @@ public class SearchController : ControllerBase
         return Ok(response);
     }
 
-    /// <summary>
-    /// Search for jazz standards by interval sequence combined with rhythm (duration ratios)
-    /// </summary>
     [HttpPost("rhythm")]
     [ProducesResponseType(typeof(SearchResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -87,7 +106,8 @@ public class SearchController : ControllerBase
         }
 
         _logger.LogInformation(
-            "RhythmSearch: intervals=[{Intervals}] ratios=[{Ratios}]",
+            "RhythmSearch {Context}: intervals=[{Intervals}] ratios=[{Ratios}]",
+            GetClientContext(),
             string.Join(", ", request.Intervals),
             string.Join(", ", request.DurationRatios)
         );
@@ -95,9 +115,7 @@ public class SearchController : ControllerBase
         var response = await _searchService.SearchByRhythmAsync(request);
 
         if (!response.Success)
-        {
             return BadRequest(response);
-        }
 
         for (int i = 0; i < response.Data.Count; i++)
         {
@@ -111,27 +129,25 @@ public class SearchController : ControllerBase
         return Ok(response);
     }
 
-    /// <summary>
-    /// User confirmation feedback - logs which standard the user confirmed as correct
-    /// </summary>
     [HttpPost("feedback")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult SubmitFeedback([FromBody] FeedbackRequest request)
     {
         _logger.LogInformation(
-            "FEEDBACK: confirmed=\"{Title}\" (id={Id}) confidence={Confidence:P1} intervals=[{Intervals}] ratios=[{Ratios}]",
-            request.Title,
-            request.StandardId,
-            request.Confidence,
+            "FEEDBACK {Context}: confirmed=\"{Title}\" (id={Id}) confidence={Confidence:P1}",
+            GetClientContext(), request.Title, request.StandardId, request.Confidence);
+        _logger.LogInformation(
+            "  played:   intervals=[{Intervals}] ratios=[{Ratios}]",
             string.Join(", ", request.Intervals ?? Array.Empty<int>()),
-            string.Join(", ", request.DurationRatios ?? Array.Empty<int>())
-        );
+            string.Join(", ", request.DurationRatios ?? Array.Empty<int>()));
+        _logger.LogInformation(
+            "  db match: intervals=[{DbIntervals}] at note {Position} (len {Length})",
+            string.Join(", ", request.MatchedDbIntervals ?? Array.Empty<int>()),
+            request.MatchPosition ?? -1,
+            request.MatchLength ?? 0);
         return Ok(new { success = true });
     }
 
-    /// <summary>
-    /// Health check endpoint
-    /// </summary>
     [HttpGet("health")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult HealthCheck()
