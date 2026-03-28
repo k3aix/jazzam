@@ -47,12 +47,11 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
   }, []);
 
   // Calculate intervals from notes (semitone differences)
-  const calculateIntervals = (notes: Note[]): number[] => {
+  const calculateIntervals = useCallback((notes: Note[]): number[] => {
     if (notes.length < 2) return [];
 
     const intervals: number[] = [];
     for (let i = 1; i < notes.length; i++) {
-      // Find MIDI numbers for the notes
       const prevKey = pianoKeys.find(k => k.note === notes[i - 1].name);
       const currKey = pianoKeys.find(k => k.note === notes[i].name);
 
@@ -62,7 +61,7 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
     }
 
     return intervals;
-  };
+  }, [pianoKeys]);
 
   // Sync playedNotes to ref to avoid stale closures
   useEffect(() => {
@@ -157,9 +156,12 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
       }
     };
 
-    // Initialize on first click anywhere
     document.addEventListener('click', initAudio, { once: true });
-    return () => document.removeEventListener('click', initAudio);
+    document.addEventListener('touchstart', initAudio, { once: true });
+    return () => {
+      document.removeEventListener('click', initAudio);
+      document.removeEventListener('touchstart', initAudio);
+    };
   }, [audioInitialized]);
 
   // Keyboard input handling
@@ -311,12 +313,12 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
           >
             {isRecording ? (
               <>
-                <span className="w-2.5 h-2.5 bg-white rounded-full animate-pulse"></span>
-                RECORDING
+                <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="white"><rect x="1" y="1" width="12" height="12" rx="1"/></svg>
+                STOP
               </>
             ) : (
               <>
-                <span className="w-2.5 h-2.5 bg-slate-900 rounded-full"></span>
+                <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="currentColor"><circle cx="7" cy="7" r="6"/></svg>
                 START RECORDING
               </>
             )}
