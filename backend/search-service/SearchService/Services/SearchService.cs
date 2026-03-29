@@ -56,6 +56,9 @@ public class SearchService : ISearchService
             var allStandards = await _standardsClient.GetAllStandardsAsync();
             _logger.LogInformation("Retrieved {Count} standards for matching", allStandards.Count);
 
+            // Pre-process: correction detection requires duration ratios — skipped for pitch-only search
+            var (cleanIntervals, _) = RemoveCorrections(request.Intervals, null);
+
             // Perform interval matching with fuzzy logic
             var results = new List<SearchResult>();
 
@@ -63,7 +66,7 @@ public class SearchService : ISearchService
             {
                 var match = FindBestMatch(
                     standard.IntervalSequence,
-                    request.Intervals,
+                    cleanIntervals,
                     request.ErrorTolerance
                 );
 
@@ -71,7 +74,7 @@ public class SearchService : ISearchService
                 {
                     var confidence = CalculateConfidence(
                         match,
-                        request.Intervals.Length,
+                        cleanIntervals.Length,
                         standard.IntervalSequence.Length
                     );
 
@@ -168,8 +171,15 @@ public class SearchService : ISearchService
             var allStandards = await _standardsClient.GetAllStandardsAsync();
             _logger.LogInformation("Retrieved {Count} standards for 2D matching", allStandards.Count);
 
+            // Pre-process: remove correction pairs before building segments
+            var (cleanIntervals, cleanRatios) = RemoveCorrections(request.Intervals, request.DurationRatios);
+            if (cleanIntervals.Length != request.Intervals.Length)
+                _logger.LogInformation(
+                    "After correction removal: {Before} → {After} intervals",
+                    request.Intervals.Length, cleanIntervals.Length);
+
             // Build query as 2D segments: (interval, durationRatio)
-            var querySegments = BuildSegments(request.Intervals, request.DurationRatios);
+            var querySegments = BuildSegments(cleanIntervals, cleanRatios);
             double pitchWeight = request.PitchWeight;
             double rhythmWeight = 1.0 - pitchWeight;
 
@@ -328,6 +338,12 @@ public class SearchService : ISearchService
                 {
                     double score = 1.0 - (distance / filteredNeedle.Length);
 
+                    if (_config.EnhancedScoring.Enabled && filteredWindow.Length == filteredNeedle.Length)
+                    {
+                        double missPenalty = CalculateConsecutiveMissPenalty(filteredWindow, filteredNeedle);
+                        score = Math.Max(0, score - missPenalty);
+                    }
+
                     if (_config.EnablePositionBias)
                     {
                         double positionBias = i == 0 ? 1.1 : (i < 5 ? 1.05 : 1.0);
@@ -360,6 +376,52 @@ public class SearchService : ISearchService
     }
 
     /// <summary>
+    /// Enhanced pitch cost: steeper curve that penalises large interval errors more.
+    /// Original: Math.Min(diff / 3.0, 1.0)  → diff≥3 always costs 1.0
+    /// Enhanced: graduated so a diff of 10 costs significantly more than diff of 3.
+    /// </summary>
+    private static double EnhancedPitchCost(int pitchDiff) => pitchDiff switch
+    {
+        0 => 0.00,
+        1 => 0.20,
+        2 => 0.45,
+        3 => 0.70,
+        4 => 0.85,
+        _ => 1.00
+    };
+
+    /// <summary>
+    /// Consecutive miss penalty: scan the two filtered sequences positionally
+    /// (best-effort alignment for same-length cases) and penalise runs of
+    /// ConsecutiveMissThreshold or more large errors (>2 semitones).
+    /// Returns the total penalty to subtract from the score.
+    /// </summary>
+    private double CalculateConsecutiveMissPenalty(MelodySegment[] source, MelodySegment[] target)
+    {
+        int n = Math.Min(source.Length, target.Length);
+        double penalty = 0;
+        int streak = 0;
+
+        for (int i = 0; i < n; i++)
+        {
+            if (Math.Abs(source[i].Interval - target[i].Interval) > 2)
+            {
+                streak++;
+                if (streak == _config.EnhancedScoring.ConsecutiveMissThreshold)
+                    penalty += _config.EnhancedScoring.ConsecutiveMissPenalty;
+                else if (streak > _config.EnhancedScoring.ConsecutiveMissThreshold)
+                    penalty += _config.EnhancedScoring.ConsecutiveMissPenalty * 0.5; // extra for each beyond threshold
+            }
+            else
+            {
+                streak = 0;
+            }
+        }
+
+        return penalty;
+    }
+
+    /// <summary>
     /// Levenshtein on 2D melody segments. Each substitution cost combines
     /// pitch distance and rhythm distance into a single cost.
     /// Returns (combinedDistance, pitchOnlyDistance, rhythmOnlyDistance).
@@ -383,9 +445,11 @@ public class SearchService : ISearchService
         {
             for (int j = 1; j <= tLen; j++)
             {
-                // Pitch substitution cost: 0 if exact, graduated by semitone difference
+                // Pitch substitution cost: original or enhanced curve
                 int pitchDiff = Math.Abs(source[i - 1].Interval - target[j - 1].Interval);
-                double pitchCost = pitchDiff == 0 ? 0.0 : Math.Min(pitchDiff / 3.0, 1.0);
+                double pitchCost = _config.EnhancedScoring.Enabled
+                    ? EnhancedPitchCost(pitchDiff)
+                    : (pitchDiff == 0 ? 0.0 : Math.Min(pitchDiff / 3.0, 1.0));
 
                 // Rhythm substitution cost: graduated by ratio difference
                 // Values are x4 (quarter=4, eighth=2, half=8, dotted-half=12, whole=16)
@@ -436,6 +500,66 @@ public class SearchService : ISearchService
         }
 
         return (dist[sLen, tLen], pDist[sLen, tLen], rDist[sLen, tLen]);
+    }
+
+    /// <summary>
+    /// Detect and remove "wrong note + correction" pairs from the user's input.
+    /// A correction pair (intervals[i], intervals[i+1]) is merged when:
+    ///   - ratios[i] ≤ CorrectionMaxDuration  (wrong note was held briefly)
+    ///   - |intervals[i]| ≤ CorrectionMaxWidth (small accidental step)
+    ///   - intervals[i] and intervals[i+1] have opposite signs (went one way then back)
+    /// The pair is replaced by a single interval = intervals[i] + intervals[i+1].
+    /// Only activates when EnableCorrectionDetection = true and ratios are available.
+    /// </summary>
+    private (int[] intervals, int[]? ratios) RemoveCorrections(int[] intervals, int[]? ratios)
+    {
+        if (!_config.CorrectionDetection.Enabled || ratios == null || intervals.Length < 2)
+            return (intervals, ratios);
+
+        var resultIntervals = new List<int>();
+        var resultRatios = new List<int>();
+
+        int i = 0;
+        while (i < intervals.Length)
+        {
+            bool merged = false;
+
+            if (i + 1 < intervals.Length && i < ratios.Length)
+            {
+                int currInterval = intervals[i];
+                int nextInterval = intervals[i + 1];
+                int currRatio = ratios[i];
+
+                bool isSmall = Math.Abs(currInterval) <= _config.CorrectionDetection.MaxWidth;
+                bool isQuick = currRatio <= _config.CorrectionDetection.MaxDuration;
+                bool isOpposite = (currInterval > 0 && nextInterval < 0) ||
+                                  (currInterval < 0 && nextInterval > 0);
+
+                if (isSmall && isQuick && isOpposite)
+                {
+                    int mergedInterval = currInterval + nextInterval;
+                    int mergedRatio = (i + 1 < ratios.Length) ? ratios[i + 1] : 0;
+
+                    _logger.LogInformation(
+                        "Correction detected: [{Curr}]+[{Next}]=[{Merged}] (duration={Ratio})",
+                        currInterval, nextInterval, mergedInterval, currRatio);
+
+                    resultIntervals.Add(mergedInterval);
+                    resultRatios.Add(mergedRatio);
+                    i += 2;
+                    merged = true;
+                }
+            }
+
+            if (!merged)
+            {
+                resultIntervals.Add(intervals[i]);
+                resultRatios.Add(i < ratios.Length ? ratios[i] : 0);
+                i++;
+            }
+        }
+
+        return (resultIntervals.ToArray(), resultRatios.ToArray());
     }
 
     /// <summary>

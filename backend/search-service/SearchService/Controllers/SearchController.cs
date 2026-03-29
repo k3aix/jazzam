@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using SearchService.Models;
 using SearchService.Services;
 
@@ -10,11 +11,13 @@ public class SearchController : ControllerBase
 {
     private readonly ISearchService _searchService;
     private readonly ILogger<SearchController> _logger;
+    private readonly SearchAlgorithmConfig _config;
 
-    public SearchController(ISearchService searchService, ILogger<SearchController> logger)
+    public SearchController(ISearchService searchService, ILogger<SearchController> logger, IOptions<SearchAlgorithmConfig> config)
     {
         _searchService = searchService;
         _logger = logger;
+        _config = config.Value;
     }
 
     private string GetClientContext()
@@ -108,8 +111,9 @@ public class SearchController : ControllerBase
         }
 
         _logger.LogInformation(
-            "RhythmSearch {Context}: intervals=[{Intervals}] ratios=[{Ratios}]",
+            "RhythmSearch {Context} [{Algo}]: intervals=[{Intervals}] ratios=[{Ratios}]",
             GetClientContext(),
+            _config.EnhancedScoring.Enabled ? "enhanced" : "original",
             string.Join(", ", request.Intervals),
             string.Join(", ", request.DurationRatios)
         );
