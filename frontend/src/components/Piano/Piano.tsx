@@ -167,6 +167,10 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
   // Keyboard input handling
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore when user is typing in an input/textarea
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
       // Prevent default for mapped keys
       if (keyboardMapping.isKeyMapped(e.key)) {
         e.preventDefault();

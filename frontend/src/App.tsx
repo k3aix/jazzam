@@ -162,11 +162,11 @@ function App() {
     });
   }, [currentNotes, currentIntervals]);
 
-  const handleNoneCorrect = useCallback(() => {
+  const handleNoneCorrect = useCallback((knownTitle?: string) => {
     const durationRatios = computeDurationRatios(currentNotes);
     apiService.submitFeedback({
       standardId: 'none',
-      title: 'NONE_CORRECT',
+      title: knownTitle ? `NONE_CORRECT (user says: "${knownTitle}")` : 'NONE_CORRECT',
       confidence: 0,
       intervals: currentIntervals,
       durationRatios,
