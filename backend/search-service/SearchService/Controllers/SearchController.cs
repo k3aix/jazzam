@@ -79,8 +79,8 @@ public class SearchController : ControllerBase
         {
             var r = response.Data[i];
             _logger.LogInformation(
-                "  #{Rank} {Title} — {Confidence:P0}",
-                i + 1, r.Standard.Title, r.Confidence);
+                "  #{Rank} {Title} — {Confidence:P0} (pos {Position}, len {Length})",
+                i + 1, r.Standard.Title, r.Confidence, r.MatchPosition, r.MatchLength);
         }
 
         return Ok(response);
@@ -121,9 +121,10 @@ public class SearchController : ControllerBase
         {
             var r = response.Data[i];
             _logger.LogInformation(
-                "  #{Rank} {Title} — {Confidence:P0} (pitch {Pitch:P0}, rhythm {Rhythm:P0})",
+                "  #{Rank} {Title} — {Confidence:P0} (pitch {Pitch:P0}, rhythm {Rhythm:P0}) pos {Position} len {Length}",
                 i + 1, r.Standard.Title, r.Confidence,
-                r.PitchConfidence ?? 0, r.RhythmConfidence ?? 0);
+                r.PitchConfidence ?? 0, r.RhythmConfidence ?? 0,
+                r.MatchPosition, r.MatchLength);
         }
 
         return Ok(response);
