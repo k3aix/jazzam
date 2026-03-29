@@ -78,9 +78,11 @@ public class SearchController : ControllerBase
         for (int i = 0; i < response.Data.Count; i++)
         {
             var r = response.Data[i];
+            var seg = r.Standard.IntervalSequence.Skip(r.MatchPosition).Take(r.MatchLength);
             _logger.LogInformation(
-                "  #{Rank} {Title} — {Confidence:P0} (pos {Position}, len {Length})",
-                i + 1, r.Standard.Title, r.Confidence, r.MatchPosition, r.MatchLength);
+                "  #{Rank} {Title} — {Confidence:P0} (pos {Position}, len {Length}) db=[{Seg}]",
+                i + 1, r.Standard.Title, r.Confidence, r.MatchPosition, r.MatchLength,
+                string.Join(", ", seg));
         }
 
         return Ok(response);
@@ -120,11 +122,15 @@ public class SearchController : ControllerBase
         for (int i = 0; i < response.Data.Count; i++)
         {
             var r = response.Data[i];
+            var seg = r.Standard.IntervalSequence.Skip(r.MatchPosition).Take(r.MatchLength);
+            var ratSeg = r.Standard.DurationRatios?.Skip(r.MatchPosition).Take(r.MatchLength);
             _logger.LogInformation(
-                "  #{Rank} {Title} — {Confidence:P0} (pitch {Pitch:P0}, rhythm {Rhythm:P0}) pos {Position} len {Length}",
+                "  #{Rank} {Title} — {Confidence:P0} (pitch {Pitch:P0}, rhythm {Rhythm:P0}) pos {Position} db=[{Seg}] ratios=[{Rat}]",
                 i + 1, r.Standard.Title, r.Confidence,
                 r.PitchConfidence ?? 0, r.RhythmConfidence ?? 0,
-                r.MatchPosition, r.MatchLength);
+                r.MatchPosition,
+                string.Join(", ", seg),
+                ratSeg != null ? string.Join(", ", ratSeg) : "-");
         }
 
         return Ok(response);
