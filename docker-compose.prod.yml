@@ -49,6 +49,7 @@ services:
       ASPNETCORE_URLS: "http://+:5001"
       ASPNETCORE_ENVIRONMENT: Production
       StandardsService__BaseUrl: "http://standards-service:3001"
+      TZ: "Europe/Rome"
     volumes:
       - ./.logs/search:/app/logs
     depends_on:

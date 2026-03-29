@@ -12,6 +12,8 @@ RUN dotnet publish -c Release -o /app/publish
 FROM mcr.microsoft.com/dotnet/aspnet:9.0-alpine
 WORKDIR /app
 
+RUN apk add --no-cache tzdata
+
 COPY --from=build /app/publish .
 
 EXPOSE 5001
