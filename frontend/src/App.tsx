@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import Piano from './components/Piano/Piano';
 import ResultsList from './components/SearchResults/ResultsList';
 import { Note, SearchResult } from './types';
@@ -42,6 +42,7 @@ function App() {
   const [queryTime, setQueryTime] = useState<number | undefined>();
   const [totalMatches, setTotalMatches] = useState<number | undefined>();
   const [isRecording, setIsRecording] = useState(false);
+  const lastSearchedIntervalsRef = useRef<number[]>([]);
 
   const handleMelodyChange = useCallback((notes: Note[], intervals: number[]) => {
     setCurrentNotes(notes);
@@ -71,9 +72,13 @@ function App() {
     const newRecordingState = !isRecording;
     setIsRecording(newRecordingState);
     loggerService.logRecordingState(newRecordingState);
-    if (isRecording) {
-      // Stopped recording - do final search if we have notes
-      if (currentNotes.length >= MIN_NOTES) {
+    if (!isRecording) {
+      // Starting recording - reset last searched tracker
+      lastSearchedIntervalsRef.current = [];
+    } else {
+      // Stopped recording - only search if the debounce hasn't already searched this exact sequence
+      if (currentNotes.length >= MIN_NOTES &&
+          currentIntervals.length !== lastSearchedIntervalsRef.current.length) {
         performSearch();
       }
     }
@@ -84,6 +89,7 @@ function App() {
       return;
     }
 
+    lastSearchedIntervalsRef.current = currentIntervals;
     setIsSearching(true);
     loggerService.logSearchRequest(currentIntervals);
 

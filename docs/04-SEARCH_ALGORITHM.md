@@ -108,6 +108,8 @@ The score penalty subtracted each time a consecutive miss run is detected. The f
 
 ### `CorrectionDetection.Enabled` (default: `false`)
 
+> Only active for the rhythm search path — requires duration ratios, skipped for pitch-only search.
+
 When `true`, the search pre-processes the user's input to detect and remove "wrong note + correction" pairs before matching. This handles the common case where a user accidentally hits a wrong key, realizes immediately, and plays the correct note — which would otherwise appear as two extra intervals in the query.
 
 **Condition for detection** (all three must be true):
@@ -122,7 +124,27 @@ When detected, the two intervals are merged: `interval[i] + interval[i+1]`.
 > User actually played:   `5, 3, -1, -4` (hit a note 3 semitones up by mistake, quickly corrected)
 > With `CorrectionMaxWidth = 3` and a short duration on the wrong note → detected and merged back to `5, 2, -4`.
 
-Note: correction detection requires duration ratios, so it only activates for the rhythm search path (not pitch-only fallback).
+Note: correction detection requires duration ratios, so it only activates for the rhythm search path (not pitch-only fallback). For sequences at or above `MaxSequenceLength`, only the original sequence is used — Levenshtein handles noise well enough at that length.
+
+---
+
+### `CorrectionDetection.MaxSequenceLength` (default: `10`)
+
+Candidate generation only runs when the sequence has **fewer** intervals than this value. For longer sequences, Levenshtein absorbs a correction pair as 2 errors without meaningfully hurting the right song's ranking.
+
+> Set lower (e.g. `8`) to be more conservative. Set higher (e.g. `14`) to extend the benefit to longer sequences at the cost of more search variants.
+
+---
+
+### `CorrectionDetection.MaxCorrectionRate` (default: `0.20`)
+
+The maximum fraction of the sequence that can be correction pairs. Caps how many variants are generated.
+
+> `0.20` over 8 intervals = at most 1 correction pair (floor(8 × 0.20) = 1).
+> `0.20` over 9 intervals = at most 1 correction pair (floor(9 × 0.20) = 1).
+> `0.25` over 8 intervals = at most 2 correction pairs.
+
+More candidate pairs means more combinations searched. With 3 candidate positions and max 2 removals: `C(3,1) + C(3,2)` = 6 extra sequences. All fast in absolute terms.
 
 ---
 

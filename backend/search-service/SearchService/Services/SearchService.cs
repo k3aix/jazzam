@@ -56,17 +56,15 @@ public class SearchService : ISearchService
             var allStandards = await _standardsClient.GetAllStandardsAsync();
             _logger.LogInformation("Retrieved {Count} standards for matching", allStandards.Count);
 
-            // Pre-process: correction detection requires duration ratios — skipped for pitch-only search
-            var (cleanIntervals, _) = RemoveCorrections(request.Intervals, null);
-
             // Perform interval matching with fuzzy logic
+            // (correction detection skipped — no duration ratios available in pitch-only search)
             var results = new List<SearchResult>();
 
             foreach (var standard in allStandards)
             {
                 var match = FindBestMatch(
                     standard.IntervalSequence,
-                    cleanIntervals,
+                    request.Intervals,
                     request.ErrorTolerance
                 );
 
@@ -74,7 +72,7 @@ public class SearchService : ISearchService
                 {
                     var confidence = CalculateConfidence(
                         match,
-                        cleanIntervals.Length,
+                        request.Intervals.Length,
                         standard.IntervalSequence.Length
                     );
 
@@ -171,15 +169,18 @@ public class SearchService : ISearchService
             var allStandards = await _standardsClient.GetAllStandardsAsync();
             _logger.LogInformation("Retrieved {Count} standards for 2D matching", allStandards.Count);
 
-            // Pre-process: remove correction pairs before building segments
-            var (cleanIntervals, cleanRatios) = RemoveCorrections(request.Intervals, request.DurationRatios);
-            if (cleanIntervals.Length != request.Intervals.Length)
+            // Generate correction candidates (original + variants with plausible wrong notes removed)
+            var candidates = GenerateCorrectionCandidates(request.Intervals, request.DurationRatios);
+            if (candidates.Count > 1)
                 _logger.LogInformation(
-                    "After correction removal: {Before} → {After} intervals",
-                    request.Intervals.Length, cleanIntervals.Length);
+                    "[Correction] {Count} candidates for {Len}-interval sequence: original + {Extra} correction variant(s)",
+                    candidates.Count, request.Intervals.Length, candidates.Count - 1);
 
-            // Build query as 2D segments: (interval, durationRatio)
-            var querySegments = BuildSegments(cleanIntervals, cleanRatios);
+            // Pre-build segments for each candidate
+            var candidateSegments = candidates
+                .Select(c => BuildSegments(c.Intervals, c.Ratios))
+                .ToList();
+
             double pitchWeight = request.PitchWeight;
             double rhythmWeight = 1.0 - pitchWeight;
 
@@ -187,46 +188,57 @@ public class SearchService : ISearchService
 
             foreach (var standard in allStandards)
             {
-                // Build standard's 2D segments
-                var standardSegments = BuildSegments(
-                    standard.IntervalSequence,
-                    standard.DurationRatios
-                );
-
+                var standardSegments = BuildSegments(standard.IntervalSequence, standard.DurationRatios);
                 if (standardSegments.Length == 0) continue;
 
-                var match = FindBestMatch2D(
-                    standardSegments,
-                    querySegments,
-                    request.ErrorTolerance,
-                    pitchWeight,
-                    rhythmWeight
-                );
+                FuzzyMatch? bestMatch = null;
+                double bestConfidence = 0;
+                int bestCandidateIdx = 0;
 
-                if (match == null) continue;
-
-                var confidence = CalculateConfidence(
-                    match,
-                    querySegments.Length,
-                    standardSegments.Length
-                );
-
-                if (confidence >= request.MinConfidence)
+                for (int ci = 0; ci < candidateSegments.Count; ci++)
                 {
-                    // Use pitch score as the main confidence (pitch is primary),
-                    // combined confidence stored separately for tiebreaking
-                    var pitchConfidence = Math.Round(match.PitchScore, 3);
-                    results.Add(new SearchResult
+                    var querySegments = candidateSegments[ci];
+                    var match = FindBestMatch2D(
+                        standardSegments, querySegments,
+                        request.ErrorTolerance, pitchWeight, rhythmWeight);
+                    if (match == null) continue;
+
+                    var confidence = CalculateConfidence(match, querySegments.Length, standardSegments.Length);
+                    if (confidence > bestConfidence)
                     {
-                        Standard = standard,
-                        MatchPosition = match.Position,
-                        MatchLength = match.MatchLength,
-                        Confidence = pitchConfidence,
-                        PitchConfidence = pitchConfidence,
-                        RhythmConfidence = Math.Round(match.RhythmScore, 3),
-                        CombinedConfidence = Math.Round(confidence, 3)
-                    });
+                        bestMatch = match;
+                        bestConfidence = confidence;
+                        bestCandidateIdx = ci;
+                    }
                 }
+
+                if (bestMatch == null || bestConfidence < request.MinConfidence) continue;
+
+                // Log when a correction candidate beat the original
+                if (bestCandidateIdx > 0)
+                {
+                    var winner = candidates[bestCandidateIdx];
+                    _logger.LogInformation(
+                        "[Correction] '{Title}' matched via candidate #{Idx} " +
+                        "(removed positions [{Pos}]): original=[{Orig}] corrected=[{Corr}]",
+                        standard.Title,
+                        bestCandidateIdx,
+                        string.Join(",", winner.RemovedPositions),
+                        string.Join(", ", request.Intervals),
+                        string.Join(", ", winner.Intervals));
+                }
+
+                var pitchConfidence = Math.Round(bestMatch.PitchScore, 3);
+                results.Add(new SearchResult
+                {
+                    Standard = standard,
+                    MatchPosition = bestMatch.Position,
+                    MatchLength = bestMatch.MatchLength,
+                    Confidence = pitchConfidence,
+                    PitchConfidence = pitchConfidence,
+                    RhythmConfidence = Math.Round(bestMatch.RhythmScore, 3),
+                    CombinedConfidence = Math.Round(bestConfidence, 3)
+                });
             }
 
             // Deduplicate by title (keep best-scoring variant per song)
@@ -503,63 +515,115 @@ public class SearchService : ISearchService
     }
 
     /// <summary>
-    /// Detect and remove "wrong note + correction" pairs from the user's input.
-    /// A correction pair (intervals[i], intervals[i+1]) is merged when:
-    ///   - ratios[i] ≤ CorrectionMaxDuration  (wrong note was held briefly)
-    ///   - |intervals[i]| ≤ CorrectionMaxWidth (small accidental step)
-    ///   - intervals[i] and intervals[i+1] have opposite signs (went one way then back)
-    /// The pair is replaced by a single interval = intervals[i] + intervals[i+1].
-    /// Only activates when EnableCorrectionDetection = true and ratios are available.
+    /// A candidate sequence with the set of original positions where correction pairs were merged.
+    /// RemovedPositions is empty for the original (unmodified) candidate.
     /// </summary>
-    private (int[] intervals, int[]? ratios) RemoveCorrections(int[] intervals, int[]? ratios)
+    private record CorrectionCandidate(int[] Intervals, int[] Ratios, List<int> RemovedPositions);
+
+    /// <summary>
+    /// Generate the original sequence plus all plausible correction variants.
+    ///
+    /// A "correction pair" at position i satisfies:
+    ///   - ratios[i] ≤ MaxDuration   (wrong note was quick)
+    ///   - |intervals[i]| ≤ MaxWidth (small accidental step)
+    ///   - intervals[i] and intervals[i+1] have opposite signs (immediate reversal)
+    ///
+    /// Only activates when the sequence is shorter than MaxSequenceLength.
+    /// The number of pairs removed per candidate is capped at floor(n * MaxCorrectionRate).
+    /// Adjacent candidate positions are never both selected (they would overlap).
+    /// Always returns at least one candidate (the original).
+    /// </summary>
+    private List<CorrectionCandidate> GenerateCorrectionCandidates(int[] intervals, int[] ratios)
     {
-        if (!_config.CorrectionDetection.Enabled || ratios == null || intervals.Length < 2)
-            return (intervals, ratios);
+        var original = new CorrectionCandidate(intervals, ratios, new List<int>());
 
-        var resultIntervals = new List<int>();
-        var resultRatios = new List<int>();
+        if (!_config.CorrectionDetection.Enabled ||
+            intervals.Length >= _config.CorrectionDetection.MaxSequenceLength)
+            return new List<CorrectionCandidate> { original };
 
-        int i = 0;
-        while (i < intervals.Length)
+        // Find all positions that look like a correction
+        var candidatePositions = new List<int>();
+        for (int i = 0; i + 1 < intervals.Length && i < ratios.Length; i++)
         {
-            bool merged = false;
+            bool isSmall = Math.Abs(intervals[i]) <= _config.CorrectionDetection.MaxWidth;
+            bool isQuick = ratios[i] <= _config.CorrectionDetection.MaxDuration;
+            bool isOpposite = (intervals[i] > 0 && intervals[i + 1] < 0) ||
+                              (intervals[i] < 0 && intervals[i + 1] > 0);
+            if (isSmall && isQuick && isOpposite)
+                candidatePositions.Add(i);
+        }
 
-            if (i + 1 < intervals.Length && i < ratios.Length)
+        if (candidatePositions.Count == 0)
+            return new List<CorrectionCandidate> { original };
+
+        int maxCorrections = Math.Max(1, (int)Math.Floor(intervals.Length * _config.CorrectionDetection.MaxCorrectionRate));
+
+        var candidates = new List<CorrectionCandidate> { original };
+
+        for (int count = 1; count <= Math.Min(maxCorrections, candidatePositions.Count); count++)
+        {
+            foreach (var combo in GetCombinations(candidatePositions, count))
             {
-                int currInterval = intervals[i];
-                int nextInterval = intervals[i + 1];
-                int currRatio = ratios[i];
-
-                bool isSmall = Math.Abs(currInterval) <= _config.CorrectionDetection.MaxWidth;
-                bool isQuick = currRatio <= _config.CorrectionDetection.MaxDuration;
-                bool isOpposite = (currInterval > 0 && nextInterval < 0) ||
-                                  (currInterval < 0 && nextInterval > 0);
-
-                if (isSmall && isQuick && isOpposite)
-                {
-                    int mergedInterval = currInterval + nextInterval;
-                    int mergedRatio = (i + 1 < ratios.Length) ? ratios[i + 1] : 0;
-
-                    _logger.LogInformation(
-                        "Correction detected: [{Curr}]+[{Next}]=[{Merged}] (duration={Ratio})",
-                        currInterval, nextInterval, mergedInterval, currRatio);
-
-                    resultIntervals.Add(mergedInterval);
-                    resultRatios.Add(mergedRatio);
-                    i += 2;
-                    merged = true;
-                }
-            }
-
-            if (!merged)
-            {
-                resultIntervals.Add(intervals[i]);
-                resultRatios.Add(i < ratios.Length ? ratios[i] : 0);
-                i++;
+                var (newIntervals, newRatios) = ApplyCorrectionRemovals(intervals, ratios, combo);
+                candidates.Add(new CorrectionCandidate(newIntervals, newRatios, combo));
             }
         }
 
-        return (resultIntervals.ToArray(), resultRatios.ToArray());
+        return candidates;
+    }
+
+    /// <summary>
+    /// Merge the correction pairs at the given original positions into single intervals.
+    /// Positions must be non-adjacent (enforced by GetCombinations).
+    /// Applied from highest index to lowest so earlier positions remain valid.
+    /// </summary>
+    private static (int[] intervals, int[] ratios) ApplyCorrectionRemovals(
+        int[] intervals, int[] ratios, List<int> positions)
+    {
+        var newIntervals = new List<int>(intervals);
+        var newRatios = new List<int>(ratios);
+
+        // Process from the end so earlier indices stay valid
+        foreach (int pos in positions.OrderByDescending(p => p))
+        {
+            int merged = newIntervals[pos] + newIntervals[pos + 1];
+            int mergedRatio = (pos + 1 < newRatios.Count) ? newRatios[pos + 1] : 0;
+            newIntervals.RemoveAt(pos + 1);
+            newIntervals[pos] = merged;
+            if (pos < newRatios.Count)
+            {
+                newRatios.RemoveAt(pos);
+                if (pos < newRatios.Count)
+                    newRatios[pos] = mergedRatio;
+                else
+                    newRatios.Add(mergedRatio);
+            }
+        }
+
+        return (newIntervals.ToArray(), newRatios.ToArray());
+    }
+
+    /// <summary>
+    /// Generate all combinations of `count` elements from `items`,
+    /// skipping any pair where two selected indices are adjacent (i+1),
+    /// since merging the pair at position i consumes position i+1.
+    /// </summary>
+    private static IEnumerable<List<int>> GetCombinations(List<int> items, int count)
+    {
+        if (count == 0) { yield return new List<int>(); yield break; }
+        if (items.Count < count) yield break;
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            // Remaining candidates must be at least 2 positions away to avoid overlap
+            var remaining = items.Skip(i + 1).Where(p => p > items[i] + 1).ToList();
+            foreach (var rest in GetCombinations(remaining, count - 1))
+            {
+                var result = new List<int> { items[i] };
+                result.AddRange(rest);
+                yield return result;
+            }
+        }
     }
 
     /// <summary>

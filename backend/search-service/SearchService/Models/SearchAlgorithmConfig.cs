@@ -94,4 +94,16 @@ public class CorrectionDetectionConfig
     /// 2 = eighth note, 4 = quarter note (default), 6 = dotted quarter.
     /// </summary>
     public int MaxDuration { get; set; } = 4;
+
+    /// <summary>
+    /// Only generate correction candidates when the sequence has fewer than this many intervals.
+    /// For longer sequences Levenshtein absorbs a couple of errors without much confidence loss.
+    /// </summary>
+    public int MaxSequenceLength { get; set; } = 10;
+
+    /// <summary>
+    /// Maximum fraction of the sequence that can be correction pairs (0.0–1.0).
+    /// E.g. 0.20 over 10 intervals = at most 2 correction pairs considered.
+    /// </summary>
+    public double MaxCorrectionRate { get; set; } = 0.20;
 }
