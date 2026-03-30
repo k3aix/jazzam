@@ -54,12 +54,7 @@ function App() {
 
   // Auto-search when intervals change while recording (with debounce)
   useEffect(() => {
-    if (!isRecording || currentNotes.length < MIN_NOTES) {
-      if (!isRecording) {
-        setResults([]);
-      }
-      return;
-    }
+    if (!isRecording || currentNotes.length < MIN_NOTES) return;
 
     const timeoutId = setTimeout(() => {
       performSearch();
@@ -73,7 +68,8 @@ function App() {
     setIsRecording(newRecordingState);
     loggerService.logRecordingState(newRecordingState);
     if (!isRecording) {
-      // Starting recording - reset last searched tracker
+      // Starting recording - clear previous results and reset tracker
+      setResults([]);
       lastSearchedIntervalsRef.current = [];
     } else {
       // Stopped recording - only search if the debounce hasn't already searched this exact sequence

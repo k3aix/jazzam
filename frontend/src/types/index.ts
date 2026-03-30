@@ -48,6 +48,7 @@ export interface SearchResult {
   pageNumber?: number;
   pitchConfidence?: number;     // 0-1 pitch-only confidence (rhythm search)
   rhythmConfidence?: number;    // 0-1 rhythm-only confidence (rhythm search)
+  combinedConfidence?: number;  // 0-1 weighted pitch+rhythm confidence (rhythm search)
 }
 
 /**

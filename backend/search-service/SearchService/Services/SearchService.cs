@@ -245,8 +245,9 @@ public class SearchService : ISearchService
             var deduped = DeduplicateByTitle(results);
 
             var sortedResults = deduped
-                .OrderByDescending(r => r.Confidence)
-                .ThenByDescending(r => r.CombinedConfidence)
+                .OrderByDescending(r => r.Confidence)         // pitch first
+                .ThenByDescending(r => r.RhythmConfidence)    // rhythm tiebreaker (explicit)
+                .ThenByDescending(r => r.CombinedConfidence)  // combined as final score tiebreaker
                 .ThenBy(r => r.MatchPosition)
                 .Take(request.MaxResults)
                 .ToList();

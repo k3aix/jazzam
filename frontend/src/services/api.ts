@@ -24,6 +24,7 @@ interface BackendSearchResult {
   confidence: number;
   pitchConfidence?: number | null;
   rhythmConfidence?: number | null;
+  combinedConfidence?: number | null;
 }
 
 interface BackendSearchResponse {
@@ -111,6 +112,7 @@ class ApiService {
         pageNumber: item.standard.page_number || undefined,
         pitchConfidence: item.pitchConfidence ?? undefined,
         rhythmConfidence: item.rhythmConfidence ?? undefined,
+        combinedConfidence: item.combinedConfidence ?? undefined,
       }));
 
       return {

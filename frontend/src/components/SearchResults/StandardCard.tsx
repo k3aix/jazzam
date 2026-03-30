@@ -3,24 +3,41 @@ import { SearchResult } from '../../types';
 
 interface StandardCardProps {
   result: SearchResult;
+  rank: number;
   onConfirm?: (result: SearchResult) => void;
 }
 
-const StandardCard: React.FC<StandardCardProps> = ({ result, onConfirm }) => {
+const isDev = import.meta.env.DEV;
+
+const getBarColor = (confidence: number): string => {
+  if (confidence >= 0.85) return 'bg-emerald-400';
+  if (confidence >= 0.70) return 'bg-amber-400';
+  return 'bg-orange-400';
+};
+
+// 5 ascending-height bars based on combined (pitch+rhythm) confidence
+const SignalBars: React.FC<{ confidence: number }> = ({ confidence }) => {
+  const filled = confidence >= 0.92 ? 5 : confidence >= 0.85 ? 4 : confidence >= 0.75 ? 3 : confidence >= 0.65 ? 2 : 1;
+  const colorClass = getBarColor(confidence);
+  return (
+    <div className="flex items-end gap-0.5">
+      {Array.from({ length: 5 }, (_, i) => (
+        <div
+          key={i}
+          className={`w-1.5 rounded-sm ${i < filled ? colorClass : 'bg-slate-700'}`}
+          style={{ height: `${(i + 1) * 4 + 4}px` }}
+        />
+      ))}
+    </div>
+  );
+};
+
+const StandardCard: React.FC<StandardCardProps> = ({ result, rank, onConfirm }) => {
   const [confirmed, setConfirmed] = useState(false);
-  const confidencePercentage = Math.round(result.matchConfidence * 100);
-
-  const getConfidenceColor = (confidence: number): string => {
-    if (confidence >= 0.9) return 'text-emerald-400';
-    if (confidence >= 0.7) return 'text-amber-400';
-    return 'text-orange-400';
-  };
-
-  const getBarColor = (confidence: number): string => {
-    if (confidence >= 0.9) return 'bg-emerald-400';
-    if (confidence >= 0.7) return 'bg-amber-400';
-    return 'bg-orange-400';
-  };
+  // Weighted score: pitch counts 70%, rhythm 30%. Falls back to pitch-only if no rhythm data.
+  const scoreForBars = result.pitchConfidence != null && result.rhythmConfidence != null
+    ? result.pitchConfidence * 0.7 + result.rhythmConfidence * 0.3
+    : result.matchConfidence;
 
   const handleConfirm = () => {
     setConfirmed(true);
@@ -37,16 +54,20 @@ const StandardCard: React.FC<StandardCardProps> = ({ result, onConfirm }) => {
           <h3 className="text-lg font-bold text-white truncate">{result.title}</h3>
           {result.year && <p className="text-slate-400 text-sm mt-0.5">{result.year}</p>}
         </div>
-        <div className={`text-2xl font-bold tabular-nums ${getConfidenceColor(result.matchConfidence)}`}>
-          {confidencePercentage}%
+        <div className="flex flex-col items-end gap-1">
+          {isDev ? (
+            <SignalBars confidence={scoreForBars} />
+          ) : (
+            <span className="text-slate-300 text-sm font-bold">#{rank}</span>
+          )}
         </div>
       </div>
 
-      {/* Confidence bar */}
-      <div className="h-1 bg-slate-700 rounded-full mb-3 overflow-hidden">
+      {/* Combined confidence bar (pitch+rhythm) */}
+      <div className="h-1.5 bg-slate-700 rounded-full mb-3 overflow-hidden">
         <div
-          className={`h-full rounded-full ${getBarColor(result.matchConfidence)}`}
-          style={{ width: `${confidencePercentage}%` }}
+          className={`h-full rounded-full ${getBarColor(scoreForBars)}`}
+          style={{ width: `${Math.round(scoreForBars * 100)}%` }}
         />
       </div>
 
