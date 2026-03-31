@@ -20,6 +20,22 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
   const pressedKeys = useRef<Set<string>>(new Set()); // Track pressed keyboard keys
   const playedNotesRef = useRef<Note[]>([]); // Keep ref to avoid stale closures
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollDragRef = useRef<{ active: boolean; lastX: number }>({ active: false, lastX: 0 });
+
+  const handleKeyScrollStart = useCallback((clientX: number) => {
+    scrollDragRef.current = { active: true, lastX: clientX };
+  }, []);
+
+  const handleContainerPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!scrollDragRef.current.active || !scrollContainerRef.current) return;
+    const dx = scrollDragRef.current.lastX - e.clientX;
+    scrollContainerRef.current.scrollLeft += dx;
+    scrollDragRef.current.lastX = e.clientX;
+  }, []);
+
+  const handleContainerPointerUp = useCallback(() => {
+    scrollDragRef.current.active = false;
+  }, []);
 
   // Generate full piano range (C2 to B6 = 5 octaves, 60 notes)
   const pianoKeys = useMemo((): PianoKeyType[] => {
@@ -260,6 +276,7 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
               onNoteEnd={handleNoteEnd}
               isActive={activeNotes.has(key.note)}
               keyboardKey={keyboardMapping.getKeyForNote(key.note)}
+              onScrollStart={handleKeyScrollStart}
             />
           </div>
         ))}
@@ -293,6 +310,7 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
                   onNoteEnd={handleNoteEnd}
                   isActive={activeNotes.has(key.note)}
                   keyboardKey={keyboardMapping.getKeyForNote(key.note)}
+                  onScrollStart={handleKeyScrollStart}
                 />
               </div>
             );
@@ -358,7 +376,13 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
       </div>
 
       {/* Piano keyboard */}
-      <div ref={scrollContainerRef} className="w-full overflow-x-auto select-none piano-scroll pb-1">
+      <div
+        ref={scrollContainerRef}
+        className="w-full overflow-x-auto select-none piano-scroll pb-1"
+        onPointerMove={handleContainerPointerMove}
+        onPointerUp={handleContainerPointerUp}
+        onPointerLeave={handleContainerPointerUp}
+      >
         <div className="bg-slate-700 p-4 rounded-xl shadow-2xl inline-block min-w-fit">
           {renderKeys()}
         </div>

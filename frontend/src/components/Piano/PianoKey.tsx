@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { PianoKey as PianoKeyType } from '../../types';
 
 interface PianoKeyProps {
@@ -7,22 +7,39 @@ interface PianoKeyProps {
   onNoteEnd: (note: string) => void;
   isActive?: boolean;
   keyboardKey?: string | null;
+  onScrollStart?: (clientX: number) => void;
 }
+
+const SCROLL_THRESHOLD = 10; // px horizontal movement to trigger scroll instead of note
 
 const PianoKey: React.FC<PianoKeyProps> = ({
   keyData,
   onNoteStart,
   onNoteEnd,
   isActive = false,
+  onScrollStart,
 }) => {
   const [isPressed, setIsPressed] = useState(false);
+  const pointerStartX = useRef(0);
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    // Capture pointer so we get pointerup even if finger slides off
+    pointerStartX.current = e.clientX;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     if (!isPressed) {
       setIsPressed(true);
       onNoteStart(keyData.note, keyData.frequency);
+    }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!isPressed) return;
+    const dx = e.clientX - pointerStartX.current;
+    if (Math.abs(dx) > SCROLL_THRESHOLD) {
+      // Horizontal drag — stop note, release capture, hand off to container
+      setIsPressed(false);
+      onNoteEnd(keyData.note);
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      onScrollStart?.(e.clientX);
     }
   };
 
@@ -59,6 +76,7 @@ const PianoKey: React.FC<PianoKeyProps> = ({
     <div
       className={`${baseClasses} ${colorClasses} cursor-pointer transition-colors duration-75 select-none touch-none`}
       onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       onPointerLeave={handlePointerLeave}
