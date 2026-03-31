@@ -37,3 +37,26 @@ button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
+
+/* Piano keyboard scrollbar */
+.piano-scroll::-webkit-scrollbar {
+  height: 14px;
+}
+.piano-scroll::-webkit-scrollbar-track {
+  background: #334155;
+  border-radius: 7px;
+  margin: 0 4px;
+}
+.piano-scroll::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 7px;
+  border: 2px solid #334155;
+}
+.piano-scroll::-webkit-scrollbar-thumb:hover {
+  background: #cbd5e1;
+}
+/* Firefox */
+.piano-scroll {
+  scrollbar-width: auto;
+  scrollbar-color: #94a3b8 #334155;
+}
