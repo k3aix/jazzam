@@ -32,6 +32,7 @@ services:
       DB_USER: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       CORS_ORIGIN: "*"
+      ADMIN_KEY: ${ADMIN_KEY}
     volumes:
       - ./midi-files:/app/midi-files
     depends_on:

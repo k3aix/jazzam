@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import { serverConfig } from './config/database';
 import { pool } from './config/db';
 import standardsRoutes from './routes/standards';
+import adminRoutes from './routes/admin';
 
 const app: Application = express();
 
@@ -17,6 +18,7 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 
 // Routes
 app.use('/api/standards', standardsRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {

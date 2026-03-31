@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import Piano from './components/Piano/Piano';
 import ResultsList from './components/SearchResults/ResultsList';
+import AdminPage from './components/Admin/AdminPage';
 import { Note, SearchResult } from './types';
 import apiService from './services/api';
 import loggerService from './services/loggerService';
@@ -35,6 +36,8 @@ function computeDurationRatios(notes: Note[]): number[] {
 }
 
 function App() {
+  if (window.location.pathname === '/admin') return <AdminPage />;
+
   const [currentNotes, setCurrentNotes] = useState<Note[]>([]);
   const [currentIntervals, setCurrentIntervals] = useState<number[]>([]);
   const [results, setResults] = useState<SearchResult[]>([]);
