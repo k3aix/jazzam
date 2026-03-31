@@ -9,6 +9,7 @@ interface ResultsListProps {
   totalMatches?: number;
   onConfirm?: (result: SearchResult) => void;
   onNoneCorrect?: (knownTitle?: string) => void;
+  onClear?: () => void;
 }
 
 const ResultsList: React.FC<ResultsListProps> = ({
@@ -18,6 +19,7 @@ const ResultsList: React.FC<ResultsListProps> = ({
   totalMatches,
   onConfirm,
   onNoneCorrect,
+  onClear,
 }) => {
   const [noneDismissed, setNoneDismissed] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -54,9 +56,16 @@ const ResultsList: React.FC<ResultsListProps> = ({
         <h2 className="text-base font-semibold text-slate-300">
           {totalMatches || results.length} {results.length === 1 ? 'match' : 'matches'} found
         </h2>
-        {queryTime && (
-          <span className="text-xs text-slate-600">{queryTime}ms</span>
-        )}
+        <div className="flex items-center gap-3">
+          {onClear && (
+            <button onClick={onClear} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
+              clear
+            </button>
+          )}
+          {queryTime && (
+            <span className="text-xs text-slate-600">{queryTime}ms</span>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-1 lg:grid-cols-2">

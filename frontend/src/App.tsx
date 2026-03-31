@@ -257,6 +257,7 @@ function App() {
                 totalMatches={totalMatches}
                 onConfirm={handleConfirm}
                 onNoneCorrect={handleNoneCorrect}
+                onClear={() => { setResults([]); setQueryTime(undefined); setTotalMatches(undefined); }}
               />
             </section>
           )}
