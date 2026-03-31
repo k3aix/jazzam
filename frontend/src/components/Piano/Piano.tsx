@@ -250,7 +250,7 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
   // The lowest octave in the piano (C2)
   const startOctave = 2;
 
-  // Scroll to middle C on mount
+  // Scroll to middle C on mount + suppress iOS double-tap+hold selection
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
@@ -258,6 +258,19 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
     const middleCWhiteKeyIndex = (4 - startOctave) * 7;
     const scrollTarget = middleCWhiteKeyIndex * 48 - container.clientWidth / 2 + 48;
     container.scrollLeft = Math.max(0, scrollTarget);
+
+    // iOS double-tap + hold triggers text selection even with user-select:none.
+    // Detect two touches within 300ms and preventDefault to block the gesture.
+    let lastTouchTime = 0;
+    const preventDoubleTapSelection = (e: TouchEvent) => {
+      const now = Date.now();
+      if (now - lastTouchTime < 300) {
+        e.preventDefault();
+      }
+      lastTouchTime = now;
+    };
+    container.addEventListener('touchstart', preventDoubleTapSelection, { passive: false });
+    return () => container.removeEventListener('touchstart', preventDoubleTapSelection);
   }, []);
 
   // Render keys in proper piano layout
@@ -382,6 +395,7 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
         onPointerMove={handleContainerPointerMove}
         onPointerUp={handleContainerPointerUp}
         onPointerLeave={handleContainerPointerUp}
+        onContextMenu={(e) => e.preventDefault()}
       >
         <div className="bg-slate-700 p-4 rounded-xl shadow-2xl inline-block min-w-fit">
           {renderKeys()}

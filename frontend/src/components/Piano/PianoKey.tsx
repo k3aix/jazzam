@@ -80,6 +80,7 @@ const PianoKey: React.FC<PianoKeyProps> = ({
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       onPointerLeave={handlePointerLeave}
+      onContextMenu={(e) => e.preventDefault()}
       role="button"
       aria-label={`Piano key ${keyData.note}`}
     >
