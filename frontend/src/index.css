@@ -45,6 +45,18 @@ button:disabled {
   user-select: none;
 }
 
+/* Show silent mode hint only on touch devices */
+@media (pointer: coarse) {
+  .touch-device-hint {
+    display: block;
+  }
+}
+
+/* iOS momentum scrolling */
+.piano-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
 /* Piano keyboard scrollbar */
 .piano-scroll::-webkit-scrollbar {
   height: 14px;

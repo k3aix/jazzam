@@ -24,7 +24,10 @@ const PianoKey: React.FC<PianoKeyProps> = ({
 
   const handlePointerDown = (e: React.PointerEvent) => {
     pointerStartX.current = e.clientX;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    // On touch pointers let the browser handle scroll natively; capture only for mouse
+    if (e.pointerType !== 'touch') {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    }
     if (!isPressed) {
       setIsPressed(true);
       onNoteStart(keyData.note, keyData.frequency);
@@ -35,10 +38,11 @@ const PianoKey: React.FC<PianoKeyProps> = ({
     if (!isPressed) return;
     const dx = e.clientX - pointerStartX.current;
     if (Math.abs(dx) > SCROLL_THRESHOLD) {
-      // Horizontal drag — stop note, release capture, hand off to container
       setIsPressed(false);
       onNoteEnd(keyData.note);
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      }
       onScrollStart?.(e.clientX);
     }
   };
@@ -74,7 +78,7 @@ const PianoKey: React.FC<PianoKeyProps> = ({
 
   return (
     <div
-      className={`${baseClasses} ${colorClasses} cursor-pointer transition-colors duration-75 select-none touch-none`}
+      className={`${baseClasses} ${colorClasses} cursor-pointer transition-colors duration-75 select-none touch-pan-x`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

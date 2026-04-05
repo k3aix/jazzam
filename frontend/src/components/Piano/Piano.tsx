@@ -372,6 +372,11 @@ const Piano: React.FC<PianoProps> = ({ onMelodyChange, isRecording, onRecordingT
         </div>
       </div>
 
+      {/* iOS silent mode hint — only shown on touch devices */}
+      <p className="hidden touch-device-hint text-xs text-slate-500 text-center -mt-2">
+        No sound? Check your silent/vibrate switch.
+      </p>
+
       {/* Piano keyboard */}
       <div
         ref={scrollContainerRef}

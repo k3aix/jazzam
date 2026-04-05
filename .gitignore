@@ -78,3 +78,6 @@ kubeconfig
 midi-files/
 *.mid
 *.midi
+
+# extra files
+k8s/
