@@ -78,7 +78,7 @@ const PianoKey: React.FC<PianoKeyProps> = ({
 
   return (
     <div
-      className={`${baseClasses} ${colorClasses} cursor-pointer transition-colors duration-75 select-none touch-pan-x`}
+      className={`${baseClasses} ${colorClasses} cursor-pointer transition-colors duration-75 select-none touch-none`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
