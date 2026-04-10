@@ -49,6 +49,14 @@ public class SearchAlgorithmConfig
     /// Only active when CorrectionDetection.Enabled = true.
     /// </summary>
     public CorrectionDetectionConfig CorrectionDetection { get; set; } = new();
+
+    /// <summary>
+    /// Compressed search: run a parallel search where consecutive repeated notes (zeros) are
+    /// collapsed to a single zero. Helps recognize repetition-heavy songs like C Jam Blues
+    /// that lose too much signal when zeros are fully removed.
+    /// Only active when CompressedSearch.Enabled = true.
+    /// </summary>
+    public CompressedSearchConfig CompressedSearch { get; set; } = new();
 }
 
 /// <summary>
@@ -71,6 +79,29 @@ public class EnhancedScoringConfig
     /// Additional misses beyond the threshold add 0.5 * this value each.
     /// </summary>
     public double ConsecutiveMissPenalty { get; set; } = 0.12;
+}
+
+/// <summary>
+/// Settings for the compressed parallel search (collapses repeated-note runs to a single zero).
+/// </summary>
+public class CompressedSearchConfig
+{
+    /// <summary>
+    /// Enable compressed search. Runs in parallel with the standard zero-filtered search.
+    /// </summary>
+    public bool Enabled { get; set; } = false;
+
+    /// <summary>
+    /// Confidence penalty applied to results found only via compressed search (0.0–1.0).
+    /// E.g. 0.15 = compressed-search results are penalized by 15%, ranking below clean-search results.
+    /// </summary>
+    public double ConfidencePenalty { get; set; } = 0.15;
+
+    /// <summary>
+    /// Minimum run of consecutive zeros to trigger compression.
+    /// E.g. 4 = only collapse runs of 4+ repeated notes into a single zero; shorter runs kept as-is.
+    /// </summary>
+    public int MinRunLength { get; set; } = 4;
 }
 
 /// <summary>

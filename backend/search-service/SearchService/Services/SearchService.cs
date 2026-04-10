@@ -154,7 +154,9 @@ public class SearchService : ISearchService
             );
 
             var filteredIntervals = request.Intervals.Where(x => x != 0).ToArray();
-            if (filteredIntervals.Length < _config.MinimumIntervals)
+            bool rawSearchOnly = _config.CompressedSearch.Enabled && filteredIntervals.Length < _config.MinimumIntervals;
+
+            if (filteredIntervals.Length < _config.MinimumIntervals && !rawSearchOnly)
             {
                 return new SearchResponse
                 {
@@ -186,7 +188,8 @@ public class SearchService : ISearchService
 
             var results = new List<SearchResult>();
 
-            foreach (var standard in allStandards)
+            // Skip clean search if we don't have enough filtered intervals — raw search will handle it
+            foreach (var standard in rawSearchOnly ? Enumerable.Empty<JazzStandard>() : allStandards)
             {
                 var standardSegments = BuildSegments(standard.IntervalSequence, standard.DurationRatios);
                 if (standardSegments.Length == 0) continue;
@@ -239,6 +242,53 @@ public class SearchService : ISearchService
                     RhythmConfidence = Math.Round(bestMatch.RhythmScore, 3),
                     CombinedConfidence = Math.Round(bestConfidence, 3)
                 });
+            }
+
+            // Compressed parallel search — collapses runs of zeros to a single zero.
+            // Preserves repetition structure (zero = repeated note) without zero-count noise.
+            // Helps recognize repetition-heavy songs like C Jam Blues.
+            if (_config.CompressedSearch.Enabled)
+            {
+                var compressedQuery = CompressZeroRuns(request.Intervals);
+                var compressedRatios = CompressZeroRunRatios(request.Intervals, request.DurationRatios);
+                var compressedSegments = BuildSegments(compressedQuery, compressedRatios);
+                var cleanTitles = new HashSet<string>(results.Select(r => r.Standard.Title), StringComparer.OrdinalIgnoreCase);
+
+                foreach (var standard in allStandards)
+                {
+                    var compressedHaystack = CompressZeroRuns(standard.IntervalSequence);
+                    var compressedHaystackRatios = CompressZeroRunRatios(standard.IntervalSequence, standard.DurationRatios);
+                    var standardSegments = BuildSegments(compressedHaystack, compressedHaystackRatios);
+                    if (standardSegments.Length == 0) continue;
+
+                    var match = FindBestMatch2D(
+                        standardSegments, compressedSegments,
+                        request.ErrorTolerance, pitchWeight, rhythmWeight);
+                    if (match == null) continue;
+
+                    var confidence = CalculateConfidence(match, compressedSegments.Length, standardSegments.Length);
+                    var penalizedConfidence = confidence - _config.CompressedSearch.ConfidencePenalty;
+                    if (penalizedConfidence < request.MinConfidence) continue;
+
+                    if (!cleanTitles.Contains(standard.Title))
+                    {
+                        _logger.LogInformation(
+                            "[RawSearch] '{Title}' found via compressed search (confidence={Conf:F2} after penalty={Pen:F2})",
+                            standard.Title, penalizedConfidence, _config.CompressedSearch.ConfidencePenalty);
+
+                        var pitchConfidence = Math.Round(match.PitchScore, 3);
+                        results.Add(new SearchResult
+                        {
+                            Standard = standard,
+                            MatchPosition = match.Position,
+                            MatchLength = match.MatchLength,
+                            Confidence = Math.Round(pitchConfidence - _config.CompressedSearch.ConfidencePenalty, 3),
+                            PitchConfidence = Math.Round(pitchConfidence - _config.CompressedSearch.ConfidencePenalty, 3),
+                            RhythmConfidence = Math.Round(match.RhythmScore, 3),
+                            CombinedConfidence = Math.Round(penalizedConfidence, 3)
+                        });
+                    }
+                }
             }
 
             // Deduplicate by title (keep best-scoring variant per song)
@@ -638,6 +688,66 @@ public class SearchService : ISearchService
     }
 
     /// <summary>
+    /// Collapse runs of consecutive zeros that are at least MinRunLength long into a single zero.
+    /// Shorter runs are kept as-is. E.g. with MinRunLength=4:
+    /// [0,0,0,0,5,-5,0,0,5] → [0,5,-5,0,0,5]  (4-run compressed, 2-run kept)
+    /// </summary>
+    private int[] CompressZeroRuns(int[] sequence)
+    {
+        int minRun = _config.CompressedSearch.MinRunLength;
+        var result = new List<int>();
+        int i = 0;
+        while (i < sequence.Length)
+        {
+            if (sequence[i] == 0)
+            {
+                int runStart = i;
+                while (i < sequence.Length && sequence[i] == 0) i++;
+                int runLen = i - runStart;
+                if (runLen >= minRun)
+                    result.Add(0); // collapse entire run to one zero
+                else
+                    for (int j = 0; j < runLen; j++) result.Add(0); // keep as-is
+            }
+            else
+            {
+                result.Add(sequence[i]);
+                i++;
+            }
+        }
+        return result.ToArray();
+    }
+
+    /// <summary>
+    /// Compress ratios in parallel with CompressZeroRuns — keeps the ratio of the first zero in each compressed run.
+    /// </summary>
+    private int[] CompressZeroRunRatios(int[] intervals, int[] ratios)
+    {
+        int minRun = _config.CompressedSearch.MinRunLength;
+        var result = new List<int>();
+        int i = 0;
+        while (i < intervals.Length && i < ratios.Length)
+        {
+            if (intervals[i] == 0)
+            {
+                int runStart = i;
+                while (i < intervals.Length && intervals[i] == 0) i++;
+                int runLen = i - runStart;
+                if (runLen >= minRun)
+                    result.Add(ratios[runStart]); // keep only first ratio
+                else
+                    for (int j = runStart; j < runStart + runLen && j < ratios.Length; j++) result.Add(ratios[j]);
+            }
+            else
+            {
+                result.Add(ratios[i]);
+                i++;
+            }
+        }
+        return result.ToArray();
+    }
+
+    /// <summary>
     /// Count the number of zeros in a sequence.
     /// </summary>
     private int CountZeros(int[] sequence)
@@ -693,13 +803,20 @@ public class SearchService : ISearchService
         );
 
         // Scan through the standard's interval sequence using a sliding window approach
-        // Windows of varying sizes are checked because zeros are removed
+        // Windows of varying sizes are checked because zeros are removed.
+        // For repetition-heavy songs (many zeros in haystack), the non-zero intervals are spread
+        // further apart, so we need a larger window to find them all.
+        double haystackZeroRatio = haystack.Length > 0 ? (double)CountZeros(haystack) / haystack.Length : 0;
+        double needleZeroRatio = needle.Length > 0 ? (double)CountZeros(needle) / needle.Length : 0;
+        double maxZeroRatio = Math.Max(haystackZeroRatio, needleZeroRatio);
+        int windowMultiplier = maxZeroRatio >= 0.7 ? 10 : (maxZeroRatio >= 0.4 ? 5 : 3);
+
         for (int i = 0; i < haystack.Length; i++)
         {
             // Try different window sizes to find the best match
             // Window might be larger than filteredNeedle due to zeros in haystack
             int minWindowSize = filteredNeedle.Length;
-            int maxWindowSize = Math.Min(haystack.Length - i, filteredNeedle.Length * 3); // Allow up to 3x for zeros
+            int maxWindowSize = Math.Min(haystack.Length - i, filteredNeedle.Length * windowMultiplier);
 
             for (int windowSize = minWindowSize; windowSize <= maxWindowSize; windowSize++)
             {
