@@ -688,13 +688,13 @@ public class SearchService : ISearchService
     }
 
     /// <summary>
-    /// Collapse runs of consecutive zeros that are at least MinRunLength long into a single zero.
-    /// Shorter runs are kept as-is. E.g. with MinRunLength=4:
-    /// [0,0,0,0,5,-5,0,0,5] → [0,5,-5,0,0,5]  (4-run compressed, 2-run kept)
+    /// Compress runs of consecutive zeros: each group of ZeroGroupSize zeros becomes one zero.
+    /// Runs shorter than ZeroGroupSize are kept as-is.
+    /// E.g. ZeroGroupSize=4: [0,0,0,0,0,0,0,0,5,-5,0,0,5] → [0,0,5,-5,0,0,5]  (8-run → 2, 2-run kept)
     /// </summary>
     private int[] CompressZeroRuns(int[] sequence)
     {
-        int minRun = _config.CompressedSearch.MinRunLength;
+        int groupSize = _config.CompressedSearch.ZeroGroupSize;
         var result = new List<int>();
         int i = 0;
         while (i < sequence.Length)
@@ -704,8 +704,8 @@ public class SearchService : ISearchService
                 int runStart = i;
                 while (i < sequence.Length && sequence[i] == 0) i++;
                 int runLen = i - runStart;
-                if (runLen >= minRun)
-                    result.Add(0); // collapse entire run to one zero
+                if (runLen >= groupSize)
+                    for (int k = 0; k < runLen / groupSize; k++) result.Add(0);
                 else
                     for (int j = 0; j < runLen; j++) result.Add(0); // keep as-is
             }
@@ -719,11 +719,13 @@ public class SearchService : ISearchService
     }
 
     /// <summary>
-    /// Compress ratios in parallel with CompressZeroRuns — keeps the ratio of the first zero in each compressed run.
+    /// Compress ratios in parallel with CompressZeroRuns.
+    /// For each emitted zero, keeps the ratio of the first zero in its group.
+    /// E.g. ZeroGroupSize=4, 8-run → 2 zeros using ratios at positions 0 and 4 within the run.
     /// </summary>
     private int[] CompressZeroRunRatios(int[] intervals, int[] ratios)
     {
-        int minRun = _config.CompressedSearch.MinRunLength;
+        int groupSize = _config.CompressedSearch.ZeroGroupSize;
         var result = new List<int>();
         int i = 0;
         while (i < intervals.Length && i < ratios.Length)
@@ -733,8 +735,8 @@ public class SearchService : ISearchService
                 int runStart = i;
                 while (i < intervals.Length && intervals[i] == 0) i++;
                 int runLen = i - runStart;
-                if (runLen >= minRun)
-                    result.Add(ratios[runStart]); // keep only first ratio
+                if (runLen >= groupSize)
+                    for (int k = 0; k < runLen / groupSize; k++) result.Add(ratios[runStart + k * groupSize]);
                 else
                     for (int j = runStart; j < runStart + runLen && j < ratios.Length; j++) result.Add(ratios[j]);
             }

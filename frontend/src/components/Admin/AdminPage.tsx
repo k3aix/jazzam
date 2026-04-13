@@ -93,7 +93,11 @@ const AdminPage: React.FC = () => {
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-white font-bold text-xl">
-            Standards <span className="text-amber-400 font-normal text-base ml-2">{standards.length} total</span>
+            Standards{' '}
+            <span className="text-amber-400 font-normal text-base ml-2">{standards.length} total</span>
+            <span className="text-slate-400 font-normal text-sm ml-3">
+              {new Set(standards.map(s => s.title.toLowerCase())).size} unique titles
+            </span>
           </h1>
           <input
             type="text"

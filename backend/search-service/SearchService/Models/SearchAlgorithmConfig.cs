@@ -82,7 +82,7 @@ public class EnhancedScoringConfig
 }
 
 /// <summary>
-/// Settings for the compressed parallel search (collapses repeated-note runs to a single zero).
+/// Settings for the compressed parallel search (collapses repeated-note runs into fewer zeros).
 /// </summary>
 public class CompressedSearchConfig
 {
@@ -98,10 +98,11 @@ public class CompressedSearchConfig
     public double ConfidencePenalty { get; set; } = 0.15;
 
     /// <summary>
-    /// Minimum run of consecutive zeros to trigger compression.
-    /// E.g. 4 = only collapse runs of 4+ repeated notes into a single zero; shorter runs kept as-is.
+    /// Number of consecutive zeros that map to one output zero.
+    /// Runs shorter than this are kept as-is; longer runs emit floor(runLen / ZeroGroupSize) zeros.
+    /// E.g. ZeroGroupSize=4: 3 zeros → 3 zeros (unchanged), 4 zeros → 1, 8 zeros → 2, 10 zeros → 2.
     /// </summary>
-    public int MinRunLength { get; set; } = 4;
+    public int ZeroGroupSize { get; set; } = 4;
 }
 
 /// <summary>
