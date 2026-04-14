@@ -7,7 +7,7 @@
   "RhythmErrorTolerance": 0.35,
   "EnhancedScoring": {
     "Enabled": true,
-    "ConsecutiveMissThreshold": 3,
+    "ConsecutiveMissThreshold": 2,
     "ConsecutiveMissPenalty": 0.12
   },
   "CorrectionDetection": {
