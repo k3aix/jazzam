@@ -11,14 +11,14 @@
     "ConsecutiveMissPenalty": 0.12
   },
   "CorrectionDetection": {
-    "Enabled": true,
+    "Enabled": false,
     "MaxWidth": 2,
     "MaxDuration": 8,
     "MaxSequenceLength": 10,
     "MaxCorrectionRate": 0.20
   },
   "CompressedSearch": {
-    "Enabled": true,
+    "Enabled": false,
     "ConfidencePenalty": 0.15,
     "ZeroGroupSize": 4
   }
