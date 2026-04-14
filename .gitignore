@@ -84,3 +84,6 @@ k8s/
 
 # Claude internal
 .claude/
+
+# Tuning runner temp file (created/deleted automatically by tests/tuning runner)
+backend/search-service/SearchService/appsettings.Tuning.json
