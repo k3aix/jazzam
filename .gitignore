@@ -81,3 +81,6 @@ midi-files/
 
 # extra files
 k8s/
+
+# Claude internal
+.claude/
