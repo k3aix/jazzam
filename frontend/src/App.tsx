@@ -9,6 +9,11 @@ import loggerService from './services/loggerService';
 const MUSICAL_VALUES = [0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8];
 const MIN_NOTES = 6; // Backend requires at least 5 non-zero intervals = 6 notes
 
+// When true: if the last search in a recording session returns empty, fall back to the
+// best result seen earlier in the session rather than showing nothing.
+// Set to false to keep the default behaviour (always show the last search result only).
+const SHOW_BEST_SESSION_RESULT_AS_FALLBACK = false;
+
 function computeDurationRatios(notes: Note[]): number[] {
   if (notes.length < 2) return [];
 
@@ -46,6 +51,8 @@ function App() {
   const [totalMatches, setTotalMatches] = useState<number | undefined>();
   const [isRecording, setIsRecording] = useState(false);
   const lastSearchedIntervalsRef = useRef<number[]>([]);
+  const bestResultsDuringRecordingRef = useRef<SearchResult[]>([]);
+  const bestQueryTimeDuringRecordingRef = useRef<number | undefined>(undefined);
 
   const handleMelodyChange = useCallback((notes: Note[], intervals: number[]) => {
     setCurrentNotes(notes);
@@ -71,9 +78,11 @@ function App() {
     setIsRecording(newRecordingState);
     loggerService.logRecordingState(newRecordingState);
     if (!isRecording) {
-      // Starting recording - clear previous results and reset tracker
+      // Starting recording - clear previous results and reset trackers
       setResults([]);
       lastSearchedIntervalsRef.current = [];
+      bestResultsDuringRecordingRef.current = [];
+      bestQueryTimeDuringRecordingRef.current = undefined;
     } else {
       // Stopped recording - only search if the debounce hasn't already searched this exact sequence
       if (currentNotes.length >= MIN_NOTES &&
@@ -112,9 +121,26 @@ function App() {
             maxResults: 10,
           });
 
-      setResults(response.results);
-      setQueryTime(response.queryTime);
-      setTotalMatches(response.totalMatches);
+      // Track the best result set seen during this recording session.
+      // "Best" = highest top-result confidence. Used as fallback if a later search returns empty.
+      const topConfidence = response.results[0]?.matchConfidence ?? 0;
+      const bestConfidence = bestResultsDuringRecordingRef.current[0]?.matchConfidence ?? 0;
+      if (topConfidence > bestConfidence) {
+        bestResultsDuringRecordingRef.current = response.results;
+        bestQueryTimeDuringRecordingRef.current = response.queryTime;
+      }
+
+      // If this search returned nothing but we have a better result from earlier in the session, keep it.
+      const resultsToShow = (SHOW_BEST_SESSION_RESULT_AS_FALLBACK && response.results.length === 0)
+        ? bestResultsDuringRecordingRef.current
+        : response.results;
+      const queryTimeToShow = (SHOW_BEST_SESSION_RESULT_AS_FALLBACK && response.results.length === 0)
+        ? bestQueryTimeDuringRecordingRef.current
+        : response.queryTime;
+
+      setResults(resultsToShow);
+      setQueryTime(queryTimeToShow);
+      setTotalMatches(resultsToShow.length);
 
       loggerService.logSearchResponse({
         intervals: currentIntervals,
@@ -144,7 +170,14 @@ function App() {
         intervals: currentIntervals,
         error: error instanceof Error ? error.message : 'Unknown error',
       });
-      setResults([]);
+      const fallback = SHOW_BEST_SESSION_RESULT_AS_FALLBACK ? bestResultsDuringRecordingRef.current : [];
+      if (fallback.length > 0) {
+        setResults(fallback);
+        setQueryTime(bestQueryTimeDuringRecordingRef.current);
+        setTotalMatches(fallback.length);
+      } else {
+        setResults([]);
+      }
     }
     setIsSearching(false);
   };
