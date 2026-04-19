@@ -370,8 +370,9 @@ public class SearchService : ISearchService
         MelodySegment[] haystack, MelodySegment[] needle,
         double errorTolerance, double pitchWeight, double rhythmWeight)
     {
-        // Filter out zero-interval segments from needle (repeated notes)
-        var filteredNeedle = needle.Where(s => s.Interval != 0).ToArray();
+        // Collapse zero-interval segments: each repeated note's duration is merged
+        // into the preceding non-zero note (or the next one if at the start).
+        var filteredNeedle = CollapseZeros(needle);
         if (filteredNeedle.Length == 0) return null;
 
         FuzzyMatch? bestMatch = null;
@@ -387,7 +388,7 @@ public class SearchService : ISearchService
                 if (i + windowSize > haystack.Length) break;
 
                 var window = haystack.Skip(i).Take(windowSize).ToArray();
-                var filteredWindow = window.Where(s => s.Interval != 0).ToArray();
+                var filteredWindow = CollapseZeros(window);
 
                 if (Math.Abs(filteredWindow.Length - filteredNeedle.Length) > maxAllowedDistance)
                     continue;
@@ -685,6 +686,49 @@ public class SearchService : ISearchService
     private int[] RemoveZeros(int[] sequence)
     {
         return sequence.Where(x => x != 0).ToArray();
+    }
+
+    /// <summary>
+    /// Collapse zero-interval segments into adjacent non-zero notes by merging their durations.
+    /// A zero interval means the same note is repeated; rather than discarding its duration,
+    /// we add it to the preceding non-zero note's duration (or the following one if at the start).
+    /// Example: intervals=[2, 0, 3], durations=[4, 2, 8] → [(2, 6), (3, 8)]
+    ///          intervals=[0, 2, 3], durations=[2, 4, 8] → [(2, 6), (3, 8)]
+    /// </summary>
+    private static MelodySegment[] CollapseZeros(MelodySegment[] segments)
+    {
+        var result = new List<MelodySegment>();
+        int pendingDuration = 0; // duration of leading zeros, added to the first non-zero note
+
+        foreach (var seg in segments)
+        {
+            if (seg.Interval == 0)
+            {
+                if (result.Count == 0)
+                {
+                    // Zero before any non-zero note: carry forward to the next note
+                    pendingDuration += seg.DurationRatio;
+                }
+                else
+                {
+                    // Zero after a non-zero note: collapse into the preceding note
+                    var last = result[result.Count - 1];
+                    last.DurationRatio += seg.DurationRatio;
+                    result[result.Count - 1] = last;
+                }
+            }
+            else
+            {
+                result.Add(new MelodySegment
+                {
+                    Interval = seg.Interval,
+                    DurationRatio = seg.DurationRatio + pendingDuration
+                });
+                pendingDuration = 0;
+            }
+        }
+
+        return result.ToArray();
     }
 
     /// <summary>
