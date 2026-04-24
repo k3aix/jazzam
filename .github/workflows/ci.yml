@@ -28,70 +28,76 @@ jobs:
       - name: Install kubectl
         uses: azure/setup-kubectl@v3
 
-      - name: Build (verify only — PR)
-        if: github.event_name == 'pull_request'
+      - name: Build image
+        env:
+          SERVICE_NAME: ${{ matrix.service.name }}
+          SERVICE_SUBPATH: ${{ matrix.service.subpath }}
+          IS_PUSH: ${{ github.event_name != 'pull_request' }}
         run: |
           SHORT_SHA="${GITHUB_SHA:0:7}"
-          JOB_NAME="${{ matrix.service.name }}-${SHORT_SHA}"
-          kubectl apply -f - <<EOF
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: ${JOB_NAME}
-  namespace: arc-runners
-spec:
-  ttlSecondsAfterFinished: 300
-  template:
-    spec:
-      restartPolicy: Never
-      containers:
-      - name: kaniko
-        image: gcr.io/kaniko-project/executor:latest
-        args:
-        - --context=git://github.com/k3aix/jazzam.git#${GITHUB_SHA}
-        - --context-sub-path=${{ matrix.service.subpath }}
-        - --dockerfile=Dockerfile
-        - --no-push
-EOF
-          kubectl wait job/${JOB_NAME} -n arc-runners --for=condition=Complete --timeout=600s
-          kubectl logs -n arc-runners -l job-name=${JOB_NAME} --tail=100
-          kubectl delete job/${JOB_NAME} -n arc-runners --ignore-not-found
+          export JOB_NAME="${SERVICE_NAME}-${SHORT_SHA}"
 
-      - name: Build and push (main)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          SHORT_SHA="${GITHUB_SHA:0:7}"
-          JOB_NAME="${{ matrix.service.name }}-${SHORT_SHA}"
-          kubectl apply -f - <<EOF
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: ${JOB_NAME}
-  namespace: arc-runners
-spec:
-  ttlSecondsAfterFinished: 300
-  template:
-    spec:
-      restartPolicy: Never
-      containers:
-      - name: kaniko
-        image: gcr.io/kaniko-project/executor:latest
-        args:
-        - --context=git://github.com/k3aix/jazzam.git#${GITHUB_SHA}
-        - --context-sub-path=${{ matrix.service.subpath }}
-        - --dockerfile=Dockerfile
-        - --destination=${REGISTRY}/${{ matrix.service.name }}:${SHORT_SHA}
-        - --destination=${REGISTRY}/${{ matrix.service.name }}:latest
-        - --insecure
-EOF
+          python3 -c '
+          import json, subprocess, os
+
+          sha        = os.environ["GITHUB_SHA"]
+          subpath    = os.environ["SERVICE_SUBPATH"]
+          name       = os.environ["SERVICE_NAME"]
+          job_name   = os.environ["JOB_NAME"]
+          registry   = os.environ["REGISTRY"]
+          short_sha  = sha[:7]
+          is_push    = os.environ["IS_PUSH"] == "true"
+
+          if is_push:
+            extra_args = [
+              f"--destination={registry}/{name}:{short_sha}",
+              f"--destination={registry}/{name}:latest",
+              "--insecure",
+            ]
+          else:
+            extra_args = ["--no-push"]
+
+          job = {
+            "apiVersion": "batch/v1",
+            "kind": "Job",
+            "metadata": {"name": job_name, "namespace": "arc-runners"},
+            "spec": {
+              "ttlSecondsAfterFinished": 300,
+              "template": {
+                "spec": {
+                  "restartPolicy": "Never",
+                  "containers": [{
+                    "name": "kaniko",
+                    "image": "gcr.io/kaniko-project/executor:latest",
+                    "args": [
+                      f"--context=git://github.com/k3aix/jazzam.git#{sha}",
+                      f"--context-sub-path={subpath}",
+                      "--dockerfile=Dockerfile",
+                    ] + extra_args
+                  }]
+                }
+              }
+            }
+          }
+
+          subprocess.run(
+            ["kubectl", "apply", "-f", "-"],
+            input=json.dumps(job).encode(),
+            check=True
+          )
+          print(f"Job {job_name} submitted ({'push' if is_push else 'verify only'})")
+          '
+
           kubectl wait job/${JOB_NAME} -n arc-runners --for=condition=Complete --timeout=600s
           kubectl logs -n arc-runners -l job-name=${JOB_NAME} --tail=100
           kubectl delete job/${JOB_NAME} -n arc-runners --ignore-not-found
 
       - name: Get logs on failure
         if: failure()
+        env:
+          SERVICE_NAME: ${{ matrix.service.name }}
         run: |
           SHORT_SHA="${GITHUB_SHA:0:7}"
-          JOB_NAME="${{ matrix.service.name }}-${SHORT_SHA}"
+          JOB_NAME="${SERVICE_NAME}-${SHORT_SHA}"
           kubectl logs -n arc-runners -l job-name=${JOB_NAME} --tail=200 || true
           kubectl delete job/${JOB_NAME} -n arc-runners --ignore-not-found || true
