@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: registry.kube-registry.svc.cluster.local:5000
+
+jobs:
+  build:
+    name: Build ${{ matrix.service.name }}
+    runs-on: k3aix-runners
+    strategy:
+      matrix:
+        service:
+          - name: jazz-frontend
+            subpath: frontend
+          - name: jazz-standards
+            subpath: backend/standards-service
+          - name: jazz-search
+            subpath: backend/search-service/SearchService
+
+    steps:
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Build (verify only — PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          JOB_NAME="${{ matrix.service.name }}-${SHORT_SHA}"
+          kubectl apply -f - <<EOF
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${JOB_NAME}
+  namespace: arc-runners
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: kaniko
+        image: gcr.io/kaniko-project/executor:latest
+        args:
+        - --context=git://github.com/k3aix/jazzam.git#${GITHUB_SHA}
+        - --context-sub-path=${{ matrix.service.subpath }}
+        - --dockerfile=Dockerfile
+        - --no-push
+EOF
+          kubectl wait job/${JOB_NAME} -n arc-runners --for=condition=Complete --timeout=600s
+          kubectl logs -n arc-runners -l job-name=${JOB_NAME} --tail=100
+          kubectl delete job/${JOB_NAME} -n arc-runners --ignore-not-found
+
+      - name: Build and push (main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          JOB_NAME="${{ matrix.service.name }}-${SHORT_SHA}"
+          kubectl apply -f - <<EOF
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${JOB_NAME}
+  namespace: arc-runners
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: kaniko
+        image: gcr.io/kaniko-project/executor:latest
+        args:
+        - --context=git://github.com/k3aix/jazzam.git#${GITHUB_SHA}
+        - --context-sub-path=${{ matrix.service.subpath }}
+        - --dockerfile=Dockerfile
+        - --destination=${REGISTRY}/${{ matrix.service.name }}:${SHORT_SHA}
+        - --destination=${REGISTRY}/${{ matrix.service.name }}:latest
+        - --insecure
+EOF
+          kubectl wait job/${JOB_NAME} -n arc-runners --for=condition=Complete --timeout=600s
+          kubectl logs -n arc-runners -l job-name=${JOB_NAME} --tail=100
+          kubectl delete job/${JOB_NAME} -n arc-runners --ignore-not-found
+
+      - name: Get logs on failure
+        if: failure()
+        run: |
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          JOB_NAME="${{ matrix.service.name }}-${SHORT_SHA}"
+          kubectl logs -n arc-runners -l job-name=${JOB_NAME} --tail=200 || true
+          kubectl delete job/${JOB_NAME} -n arc-runners --ignore-not-found || true
