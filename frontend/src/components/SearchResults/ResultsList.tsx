@@ -70,7 +70,7 @@ const ResultsList: React.FC<ResultsListProps> = ({
 
       <div className="grid gap-3 md:grid-cols-1 lg:grid-cols-2">
         {results.map((result, index) => (
-          <StandardCard key={result.id} result={result} rank={index + 1} onConfirm={onConfirm} />
+          <StandardCard key={result.id} result={result} rank={index + 1} onConfirm={onConfirm} noneSelected={noneDismissed} />
         ))}
       </div>
 

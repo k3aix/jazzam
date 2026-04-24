@@ -5,6 +5,7 @@ interface StandardCardProps {
   result: SearchResult;
   rank: number;
   onConfirm?: (result: SearchResult) => void;
+  noneSelected?: boolean;
 }
 
 const isDev = import.meta.env.DEV;
@@ -32,11 +33,11 @@ const SignalBars: React.FC<{ confidence: number }> = ({ confidence }) => {
   );
 };
 
-const StandardCard: React.FC<StandardCardProps> = ({ result, rank, onConfirm }) => {
+const StandardCard: React.FC<StandardCardProps> = ({ result, rank, onConfirm, noneSelected }) => {
   const [confirmed, setConfirmed] = useState(false);
-  // Weighted score: pitch counts 70%, rhythm 30%. Falls back to pitch-only if no rhythm data.
+  // Weighted score: pitch counts 85%, rhythm 15%. Falls back to pitch-only if no rhythm data.
   const scoreForBars = result.pitchConfidence != null && result.rhythmConfidence != null
-    ? result.pitchConfidence * 0.7 + result.rhythmConfidence * 0.3
+    ? result.pitchConfidence * 0.85 + result.rhythmConfidence * 0.15
     : result.matchConfidence;
 
   const handleConfirm = () => {
@@ -83,13 +84,17 @@ const StandardCard: React.FC<StandardCardProps> = ({ result, rank, onConfirm }) 
         </div>
       )}
 
-      {/* Footer: key + confirm button */}
-      <div className="flex justify-between items-center mt-2">
-        <div className="text-xs text-slate-500">
-          {result.key && <span>Key <span className="text-slate-300 font-mono">{result.key}</span></span>}
-        </div>
+      {/* Footer: confirm button */}
+      <div className="flex justify-end items-center mt-2">
         {confirmed ? (
           <span className="text-emerald-400 text-sm font-semibold">✓ Found it!</span>
+        ) : noneSelected ? (
+          <button
+            disabled
+            className="px-3 py-1.5 bg-slate-700 text-slate-500 text-xs font-semibold rounded-lg cursor-not-allowed"
+          >
+            This is it!
+          </button>
         ) : (
           <button
             onClick={handleConfirm}
