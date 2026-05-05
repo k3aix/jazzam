@@ -53,6 +53,7 @@ function App() {
   const lastSearchedIntervalsRef = useRef<number[]>([]);
   const bestResultsDuringRecordingRef = useRef<SearchResult[]>([]);
   const bestQueryTimeDuringRecordingRef = useRef<number | undefined>(undefined);
+  const confirmedRef = useRef(false);
 
   const handleMelodyChange = useCallback((notes: Note[], intervals: number[]) => {
     setCurrentNotes(notes);
@@ -83,6 +84,7 @@ function App() {
       lastSearchedIntervalsRef.current = [];
       bestResultsDuringRecordingRef.current = [];
       bestQueryTimeDuringRecordingRef.current = undefined;
+      confirmedRef.current = false;
     } else {
       // Stopped recording - only search if the debounce hasn't already searched this exact sequence
       if (currentNotes.length >= MIN_NOTES &&
@@ -138,9 +140,11 @@ function App() {
         ? bestQueryTimeDuringRecordingRef.current
         : response.queryTime;
 
-      setResults(resultsToShow);
-      setQueryTime(queryTimeToShow);
-      setTotalMatches(resultsToShow.length);
+      if (!confirmedRef.current) {
+        setResults(resultsToShow);
+        setQueryTime(queryTimeToShow);
+        setTotalMatches(resultsToShow.length);
+      }
 
       loggerService.logSearchResponse({
         intervals: currentIntervals,
@@ -170,19 +174,22 @@ function App() {
         intervals: currentIntervals,
         error: error instanceof Error ? error.message : 'Unknown error',
       });
-      const fallback = SHOW_BEST_SESSION_RESULT_AS_FALLBACK ? bestResultsDuringRecordingRef.current : [];
-      if (fallback.length > 0) {
-        setResults(fallback);
-        setQueryTime(bestQueryTimeDuringRecordingRef.current);
-        setTotalMatches(fallback.length);
-      } else {
-        setResults([]);
+      if (!confirmedRef.current) {
+        const fallback = SHOW_BEST_SESSION_RESULT_AS_FALLBACK ? bestResultsDuringRecordingRef.current : [];
+        if (fallback.length > 0) {
+          setResults(fallback);
+          setQueryTime(bestQueryTimeDuringRecordingRef.current);
+          setTotalMatches(fallback.length);
+        } else {
+          setResults([]);
+        }
       }
     }
     setIsSearching(false);
   };
 
   const handleConfirm = useCallback((result: SearchResult) => {
+    confirmedRef.current = true;
     const durationRatios = computeDurationRatios(currentNotes);
     const matchedDbIntervals = result.intervalSequence.slice(
       result.matchPosition,
