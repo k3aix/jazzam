@@ -1,0 +1,35 @@
+name: Deploy to staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag to deploy (e.g. abc1234 or latest)
+        required: false
+        default: latest
+
+jobs:
+  deploy:
+    name: Pin version to staging
+    runs-on: k3aix-amd64-runners
+    steps:
+      - name: Set image tags
+        env:
+          K8S_TOKEN: ${{ secrets.K8S_STAGING_DEPLOYER_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          REGISTRY: localhost:30100
+        run: |
+          kubectl() {
+            command kubectl \
+              --server=https://kubernetes.default.svc \
+              --token="$K8S_TOKEN" \
+              --certificate-authority=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+              "$@"
+          }
+          kubectl set image deployment/jazz-frontend \
+            jazz-frontend=$REGISTRY/jazz-frontend:$TAG -n jazzam-staging
+          kubectl set image deployment/jazz-standards \
+            jazz-standards=$REGISTRY/jazz-standards:$TAG -n jazzam-staging
+          kubectl set image deployment/jazz-search \
+            jazz-search=$REGISTRY/jazz-search:$TAG -n jazzam-staging
+          kubectl rollout status deployment -n jazzam-staging --timeout=120s

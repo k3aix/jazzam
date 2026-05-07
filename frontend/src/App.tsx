@@ -342,6 +342,9 @@ function App() {
         <div className="max-w-5xl mx-auto px-6 py-5 text-center text-xs text-slate-600">
           Dataset in active development · jazz standards added regularly · results improve over time
         </div>
+        <div className="text-center pb-3 text-[10px] text-slate-700">
+          {import.meta.env.VITE_APP_VERSION ?? 'dev'}
+        </div>
       </footer>
     </div>
   );

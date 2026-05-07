@@ -3,8 +3,6 @@ name: CI
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -13,18 +11,31 @@ jobs:
     with:
       service: jazz-frontend
       context: frontend
-      push: ${{ github.event_name != 'pull_request' }}
+      build_args: VITE_APP_VERSION=${{ github.sha }}
 
   jazz-standards:
     uses: k3aix/aac-k3s/.github/workflows/docker-multiarch-build.yml@main
     with:
       service: jazz-standards
       context: backend/standards-service
-      push: ${{ github.event_name != 'pull_request' }}
 
   jazz-search:
     uses: k3aix/aac-k3s/.github/workflows/docker-multiarch-build.yml@main
     with:
       service: jazz-search
       context: backend/search-service/SearchService
-      push: ${{ github.event_name != 'pull_request' }}
+
+  deploy-staging:
+    name: Deploy to staging
+    runs-on: k3aix-amd64-runners
+    needs: [jazz-frontend, jazz-standards, jazz-search]
+    steps:
+      - name: Rollout restart
+        env:
+          K8S_TOKEN: ${{ secrets.K8S_STAGING_DEPLOYER_TOKEN }}
+        run: |
+          kubectl \
+            --server=https://kubernetes.default.svc \
+            --token="$K8S_TOKEN" \
+            --certificate-authority=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+            rollout restart deployment -n jazzam-staging
