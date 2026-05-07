@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump type
+        required: true
+        type: choice
+        options: [patch, minor, major]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Bump ${{ inputs.bump }} and deploy to production
+    runs-on: k3aix-amd64-runners
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute new version
+        id: version
+        run: |
+          current=$(cat VERSION)
+          IFS='.' read -r major minor patch <<< "$current"
+          case "${{ inputs.bump }}" in
+            major) major=$((major+1)); minor=0; patch=0 ;;
+            minor) minor=$((minor+1)); patch=0 ;;
+            patch) patch=$((patch+1)) ;;
+          esac
+          new="$major.$minor.$patch"
+          echo "current=$current" >> $GITHUB_OUTPUT
+          echo "new=$new" >> $GITHUB_OUTPUT
+
+      - name: Re-tag images as v${{ steps.version.outputs.new }}
+        run: |
+          NEW=v${{ steps.version.outputs.new }}
+          REGISTRY=localhost:30100
+          for svc in jazz-frontend jazz-standards jazz-search; do
+            docker buildx imagetools create \
+              -t $REGISTRY/$svc:$NEW \
+              $REGISTRY/$svc:latest
+          done
+
+      - name: Deploy to production
+        env:
+          K8S_TOKEN: ${{ secrets.K8S_PROD_DEPLOYER_TOKEN }}
+        run: |
+          kubectl() {
+            command kubectl \
+              --server=https://kubernetes.default.svc \
+              --token="$K8S_TOKEN" \
+              --certificate-authority=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+              "$@"
+          }
+          NEW=v${{ steps.version.outputs.new }}
+          REGISTRY=localhost:30100
+          kubectl set image deployment/jazz-frontend jazz-frontend=$REGISTRY/jazz-frontend:$NEW -n jazzam
+          kubectl set image deployment/jazz-standards jazz-standards=$REGISTRY/jazz-standards:$NEW -n jazzam
+          kubectl set image deployment/jazz-search jazz-search=$REGISTRY/jazz-search:$NEW -n jazzam
+          kubectl rollout status deployment -n jazzam --timeout=120s
+
+      - name: Update manifests in aac-k3s
+        env:
+          GITOPS_PAT: ${{ secrets.GITOPS_PAT }}
+        run: |
+          NEW=v${{ steps.version.outputs.new }}
+          REGISTRY=localhost:30100
+          git clone https://x-access-token:$GITOPS_PAT@github.com/k3aix/aac-k3s.git /tmp/aac-k3s
+          cd /tmp/aac-k3s
+          sed -i "s|$REGISTRY/jazz-frontend:v[0-9.]*|$REGISTRY/jazz-frontend:$NEW|g" manifests/apps/jazzam/deployment.yaml
+          sed -i "s|$REGISTRY/jazz-standards:v[0-9.]*|$REGISTRY/jazz-standards:$NEW|g" manifests/apps/jazzam/deployment.yaml
+          sed -i "s|$REGISTRY/jazz-search:v[0-9.]*|$REGISTRY/jazz-search:$NEW|g" manifests/apps/jazzam/deployment.yaml
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add manifests/apps/jazzam/deployment.yaml
+          git commit -m "chore: bump jazzam images to $NEW"
+          git push
+
+      - name: Commit VERSION and tag
+        run: |
+          NEW=${{ steps.version.outputs.new }}
+          echo "$NEW" > VERSION
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add VERSION
+          git commit -m "chore: release v$NEW"
+          git tag "v$NEW"
+          git push
+          git push --tags
