@@ -90,13 +90,13 @@ jobs:
           REGISTRY=localhost:30100
           git clone https://x-access-token:$GITOPS_PAT@github.com/k3aix/aac-k3s.git /tmp/aac-k3s
           cd /tmp/aac-k3s
-          sed -i "s|$REGISTRY/jazz-frontend:v[0-9.]*|$REGISTRY/jazz-frontend:$NEW|g" manifests/apps/jazzam/deployment.yaml
-          sed -i "s|$REGISTRY/jazz-standards:v[0-9.]*|$REGISTRY/jazz-standards:$NEW|g" manifests/apps/jazzam/deployment.yaml
-          sed -i "s|$REGISTRY/jazz-search:v[0-9.]*|$REGISTRY/jazz-search:$NEW|g" manifests/apps/jazzam/deployment.yaml
+          sed -i "s|$REGISTRY/jazz-frontend:[^ ]*|$REGISTRY/jazz-frontend:$NEW|g" manifests/apps/jazzam/deployment.yaml
+          sed -i "s|$REGISTRY/jazz-standards:[^ ]*|$REGISTRY/jazz-standards:$NEW|g" manifests/apps/jazzam/deployment.yaml
+          sed -i "s|$REGISTRY/jazz-search:[^ ]*|$REGISTRY/jazz-search:$NEW|g" manifests/apps/jazzam/deployment.yaml
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add manifests/apps/jazzam/deployment.yaml
-          git commit -m "chore: bump jazzam images to $NEW"
+          git diff --cached --quiet || git commit -m "chore: bump jazzam images to $NEW"
           git push
 
       - name: Commit VERSION and tag
