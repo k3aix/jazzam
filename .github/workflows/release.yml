@@ -46,11 +46,23 @@ jobs:
               http = true
               insecure = true
 
-      - name: Re-tag images as v${{ steps.version.outputs.new }}
+      - name: Rebuild frontend with version tag
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: VITE_APP_VERSION=v${{ steps.version.outputs.new }}
+          tags: |
+            registry.kube-registry.svc.cluster.local:5000/jazz-frontend:v${{ steps.version.outputs.new }}
+            registry.kube-registry.svc.cluster.local:5000/jazz-frontend:latest
+
+      - name: Re-tag backend images as v${{ steps.version.outputs.new }}
         run: |
           NEW=v${{ steps.version.outputs.new }}
           INTERNAL=registry.kube-registry.svc.cluster.local:5000
-          for svc in jazz-frontend jazz-standards jazz-search; do
+          for svc in jazz-standards jazz-search; do
             docker buildx imagetools create \
               -t $INTERNAL/$svc:$NEW \
               $INTERNAL/$svc:latest
