@@ -30,6 +30,11 @@ jobs:
     runs-on: k3aix-amd64-runners
     needs: [jazz-frontend, jazz-standards, jazz-search]
     steps:
+      - name: Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          install -m 755 kubectl /usr/local/bin/kubectl
+
       - name: Rollout restart
         env:
           K8S_TOKEN: ${{ secrets.K8S_STAGING_DEPLOYER_TOKEN }}

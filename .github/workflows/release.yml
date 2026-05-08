@@ -45,6 +45,11 @@ jobs:
               $REGISTRY/$svc:latest
           done
 
+      - name: Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          install -m 755 kubectl /usr/local/bin/kubectl
+
       - name: Deploy to production
         env:
           K8S_TOKEN: ${{ secrets.K8S_PROD_DEPLOYER_TOKEN }}
