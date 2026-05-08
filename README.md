@@ -1,333 +1,182 @@
-# Jazz Melody Finder
+# Jazzam
 
-A full-stack web application that identifies jazz standards from user-played melodies using interval sequence matching. This project serves as a comprehensive learning platform for modern cloud-native development, microservices architecture, and DevOps practices.
+**Jazzam** is a web app for identifying jazz standards by melody. You hum or tap a tune on a virtual piano — Jazzam tells you what it is.
 
-## Features
+The idea is simple: you have a melody stuck in your head, you know it's a standard, but the title won't come. Jazzam lets you tap it out on a virtual piano and find it — no need to know the key, the tempo, or where in the tune you are.
 
-- **Interactive Virtual Piano**: 2-octave keyboard (C4 to B5) with mouse/keyboard input
-- **🔊 Real-Time Audio Playback**: Hear piano sounds as you play using Web Audio API
-- **🔴 Recording Mode**: Play freely, then record when ready to identify a melody
-- **Real-time Melody Recognition**: Converts played notes to interval sequences
-- **Jazz Standards Database**: PostgreSQL database with Real Book standards
-- **Intelligent Search**: Fuzzy matching algorithm for melody identification
-- **Microservices Architecture**: Separate services for melody processing, search, and standards
-- **Cloud-Native Deployment**: Kubernetes orchestration on AWS EKS
-
-## Technology Stack
-
-### Frontend
-- **React 18** with **TypeScript**
-- **Vite** for fast development and building
-- **TailwindCSS** for styling
-- **Axios** for API communication
-
-### Backend Services
-- **Melody Service**: C# / .NET 8 - Note-to-interval conversion
-- **Search Service**: C# / .NET 8 - Pattern matching algorithm
-- **Standards Service**: TypeScript / Node.js - CRUD operations
-
-### Infrastructure
-- **PostgreSQL 16**: Jazz standards database
-- **Redis 7**: Caching layer
-- **Docker**: Containerization
-- **Kubernetes**: Orchestration
-- **Terraform**: Infrastructure as Code (AWS)
-
-### DevOps & Security
-- **GitHub Actions**: CI/CD pipeline
-- **Trivy/Snyk**: Container security scanning
-- **AWS GuardDuty**: Threat detection
-- **AWS Secrets Manager**: Secrets management
-
-## Project Structure
-
-```
-jazz-melody-finder/
-├── frontend/                    # React + TypeScript
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── Piano/          # Virtual keyboard
-│   │   │   └── SearchResults/   # Results display
-│   │   ├── services/           # API client
-│   │   └── types/              # TypeScript interfaces
-│   └── package.json
-│
-├── backend/
-│   ├── standards-service/      # TypeScript - CRUD & MIDI import
-│   └── search-service/         # TypeScript - Fuzzy search algorithm
-│
-├── database/
-│   └── migrations/             # SQL schema
-│
-├── midi-files/
-│   └── standards/              # MIDI files organized by book source
-│       └── real-book-1/        # Real Book Vol. 1 standards
-│
-├── tests/                      # Automated tests
-├── docs/                       # Documentation
-└── docker-compose.yml          # Local development
-```
-
-## Getting Started
-
-### Prerequisites
-
-1. **Install Docker Desktop** (for local database)
-   - Download from: https://www.docker.com/products/docker-desktop
-   - Verify: `docker --version`
-
-2. **Install Node.js 20+** (for frontend)
-   - Download from: https://nodejs.org/
-   - Verify: `node --version` and `npm --version`
-
-3. **Install .NET 8 SDK** (for backend services - later)
-   - Download from: https://dotnet.microsoft.com/download
-   - Verify: `dotnet --version`
-
-### Phase 1: Run Frontend with Mock Data (Start Here!)
-
-This gets you started immediately without needing the backend.
-
-```bash
-# Navigate to frontend directory
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-```
-
-Open your browser to http://localhost:3000 and start playing the piano!
-
-The frontend will use mock data for search results until you set up the backend services.
-
-### Phase 2: Set Up Local Database (Optional)
-
-```bash
-# From project root
-docker compose up -d
-
-# Verify database is running
-docker compose ps
-
-# Check logs
-docker compose logs postgres
-
-# Access database (optional)
-# pgAdmin available at: http://localhost:5050
-# Email: admin@jazz.local
-# Password: admin123
-```
-
-Database credentials:
-- Host: localhost:5432
-- Database: jazz_standards
-- User: jazzuser
-- Password: jazzpass123
-
-### Phase 3: Build Backend Services (Coming Soon)
-
-Instructions for setting up:
-1. Standards Service (TypeScript)
-2. Melody Service (C#)
-3. Search Service (C#)
-
-See `/docs/backend-setup.md` (to be created)
-
-## Development Workflow
-
-### Frontend Development
-
-```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start dev server (hot reload)
-npm run dev
-
-# Build for production
-npm run build
-
-# Preview production build
-npm run preview
-
-# Lint code
-npm run lint
-```
-
-### Database Management
-
-```bash
-# Start services
-docker compose up -d
-
-# Stop services
-docker compose down
-
-# View logs
-docker compose logs -f postgres
-
-# Reset database (WARNING: destroys data)
-docker compose down -v
-docker compose up -d
-```
-
-### Environment Variables
-
-Create `frontend/.env` from the example:
-
-```bash
-cp frontend/.env.example frontend/.env
-```
-
-Edit as needed:
-```
-VITE_API_URL=http://localhost:4000/api
-```
-
-## How It Works
-
-### 1. Audio Playback
-The piano plays realistic sounds using the Web Audio API:
-- Each key triggers its actual frequency (Hz)
-- Piano-like envelope (Attack-Decay-Sustain-Release)
-- Works in both free play and recording mode
-
-### 2. Melody Capture
-When recording mode is active, each note is captured with:
-- Note name (e.g., "C4", "D#4")
-- Frequency (Hz)
-- Timestamp
-
-### 3. Interval Conversion
-Notes are converted to interval sequences (semitone differences):
-- C4 → D4 → E4 → G4 becomes `[2, 2, 3]`
-- This makes the melody transposition-independent
-
-### 4. Pattern Matching
-The search service compares the interval sequence against the database:
-- Exact matching for precise results
-- Fuzzy matching with tolerance for variations
-- Confidence scoring based on match quality
-
-### 5. Results Display
-Matched jazz standards are displayed with:
-- Title, composer, year
-- Match confidence score
-- Musical details (key, time signature)
-- Book source and page number
-
-## API Design
-
-### Search Endpoint
-
-```typescript
-POST /api/standards/search
-
-Request:
-{
-  "intervals": [2, 2, 1, -2, -1],
-  "tolerance": 0,        // 0 = exact, 1+ = fuzzy
-  "maxResults": 10
-}
-
-Response:
-{
-  "results": [
-    {
-      "id": "uuid",
-      "title": "Autumn Leaves",
-      "composer": "Joseph Kosma",
-      "matchConfidence": 0.95,
-      "intervalSequence": [2, 2, 1, -2, -1, 2, ...],
-      ...
-    }
-  ],
-  "queryTime": 45,
-  "totalMatches": 3
-}
-```
-
-## Learning Objectives
-
-### Phase 1 (Complete)
-- [x] React + TypeScript fundamentals
-- [x] Component design and state management
-- [x] API integration patterns
-- [x] Docker Compose for local dev
-
-### Phase 2 (Complete)
-- [x] TypeScript backend with Express
-- [x] PostgreSQL schema design
-- [x] MIDI file parsing and import
-- [x] Fuzzy search algorithm (Levenshtein distance)
-- [x] 69 jazz standards from Real Book Vol. 1
-
-### Phase 3 (Future)
-- [ ] Docker containerization
-- [ ] Kubernetes deployment
-- [ ] Terraform infrastructure as code
-- [ ] CI/CD pipeline setup
-- [ ] Security scanning and hardening
-
-## Documentation
-
-Detailed guides are available in the `docs/` folder:
-
-1. **[Getting Started Guide](docs/01-GETTING_STARTED.md)** - Step-by-step setup instructions
-2. **[Project Summary](docs/02-PROJECT_SUMMARY.md)** - Complete overview of what was built
-3. **[Quick Start](docs/03-QUICK_START.md)** - Fast-track checklist to get running
-4. **[Audio & Recording](docs/04-AUDIO_AND_RECORDING.md)** - Real-time audio and recording mode features
-5. **[Piano Sound Update](docs/05-PIANO_SOUND_UPDATE.md)** - Enhanced piano sound with harmonics
-6. **[Keyboard Input](docs/06-KEYBOARD_INPUT.md)** - PC keyboard control documentation
-7. **[MIDI Import Guide](docs/07-MIDI_IMPORT_GUIDE.md)** - Importing jazz standards from MIDI files
-8. **[Search Algorithm](docs/08-SEARCH_ALGORITHM.md)** - Fuzzy matching and confidence scoring
-
-## Next Steps
-
-1. **Install Docker Desktop and Node.js** (if not already installed)
-2. **Run the frontend**: `cd frontend && npm install && npm run dev`
-3. **Play with the piano** and see mock search results
-4. **Explore the code** in `frontend/src/components/Piano/`
-5. **Learn React + TypeScript** by modifying components
-6. **Later**: Set up backend services and connect to real API
-
-## Resources
-
-- [React Documentation](https://react.dev/)
-- [TypeScript Handbook](https://www.typescriptlang.org/docs/)
-- [Vite Guide](https://vitejs.dev/guide/)
-- [TailwindCSS Docs](https://tailwindcss.com/docs)
-- [PostgreSQL Tutorial](https://www.postgresql.org/docs/)
-- [Docker Getting Started](https://docs.docker.com/get-started/)
-
-## Contributing
-
-This is a personal learning project, but suggestions are welcome! Feel free to:
-- Open issues for bugs or feature ideas
-- Submit pull requests with improvements
-- Share your own learning experiences
-
-## License
-
-MIT License - Feel free to use this project for learning purposes.
+Live at **[jazzam.it](https://jazzam.it)**.
 
 ---
 
-**Status**: Phase 2 Complete - Full-stack melody recognition working
+## How it works
 
-**Latest Updates**:
-- Backend services (Standards & Search) operational
-- 69 jazz standards imported from Real Book Vol. 1
-- MIDI import pipeline with subfolder-based organization
-- Fuzzy search with Levenshtein distance matching
-- Confidence scoring system (accuracy, position, exact match bonuses)
-- Automated test suite
+You play a melody on the on-screen piano keyboard (or use your computer keyboard). Jazzam captures the sequence of **pitch intervals** — the semitone distances between consecutive notes — which makes the search completely transposition-independent. The rhythm of what you play (the relative durations between notes) is captured as a secondary signal.
 
-See [documentation](docs/) for detailed feature guides.
+The search engine runs a **2D Levenshtein distance** over a sliding window of the database's interval sequences, matching both pitch contour and rhythm simultaneously. Pitch is the primary axis; rhythm acts as a tiebreaker and confidence booster. Results are ranked by a combined confidence score and returned in real time as you play.
 
-**Next Milestone**: Docker containerization and Kubernetes deployment
+---
+
+## Code structure
+
+```
+jazzam/
+├── frontend/                  # React + TypeScript (Vite, TailwindCSS)
+│   └── src/
+│       ├── components/
+│       │   ├── Piano/         # Virtual keyboard, recording mode
+│       │   └── SearchResults/ # Result cards with confidence scores
+│       └── services/          # API client, logger
+│
+├── backend/
+│   ├── standards-service/     # Node.js / TypeScript — standards CRUD, MIDI import
+│   └── search-service/        # C# / .NET — interval matching engine
+│
+├── tests/
+│   ├── recognition/           # Automated recognition test suite
+│   └── tuning/                # Algorithm parameter sweep (OAT)
+│
+└── .github/workflows/         # CI/CD pipelines
+```
+
+The **standards service** (Node.js) owns the database: it stores interval sequences extracted from MIDI files, serves them to the search engine, and exposes an admin API for data management.
+
+The **search service** (C# / .NET) is the compute core. It fetches all standards from the standards service, runs the 2D Levenshtein sliding-window search, and returns ranked results with per-result confidence broken down into pitch and rhythm components.
+
+The **frontend** (React / TypeScript) handles piano input, recording state, real-time debounced search calls, and result display.
+
+---
+
+## API
+
+The two backend services expose REST APIs consumed by the frontend and by each other.
+
+### Search Service (`/api`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/search/intervals` | Pitch-only search |
+| `POST` | `/search/rhythm` | Combined pitch + rhythm search (primary) |
+| `GET` | `/health` | Health check |
+
+**Rhythm search request:**
+```json
+{
+  "intervals": [-2, -2, -3, -2, 2, 3, 5],
+  "durationRatios": [24, 4, 8, 4, 32, 12, 16],
+  "maxResults": 10
+}
+```
+
+**Response:**
+```json
+{
+  "results": [
+    {
+      "id": "...",
+      "title": "Autumn In New York",
+      "matchConfidence": 0.96,
+      "pitchConfidence": 0.96,
+      "rhythmConfidence": 0.74,
+      "matchPosition": 0,
+      "matchLength": 7,
+      "intervalSequence": [...]
+    }
+  ],
+  "queryTime": 38,
+  "totalMatches": 1
+}
+```
+
+### Standards Service (`/api`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/standards` | List all standards with interval sequences |
+| `POST` | `/standards` | Add a standard |
+| `DELETE` | `/standards/:id` | Remove a standard |
+| `POST` | `/feedback` | Submit user confirmation or rejection |
+
+Feedback is persisted and later used to build tuning test cases.
+
+---
+
+## Testing
+
+### Recognition tests
+
+The recognition suite (`tests/recognition`) verifies that the search engine correctly identifies standards from their own interval sequences. It extracts interval windows directly from the database, optionally injects errors (added notes, removed notes, modified intervals), and checks whether the correct standard appears in the top results.
+
+```bash
+# Test all standards with 8-note sequences, 2 random errors
+npx ts-node src/index.ts --length 8 --errors 2 --error-type both
+
+# Test a specific standard
+npx ts-node src/index.ts --standard "Autumn Leaves" --length 6
+```
+
+### Tuning tests (parameter sweep)
+
+The tuning suite (`tests/tuning`) runs an **OAT (One-At-a-Time) parameter sweep** over the search algorithm's configuration — pitch/rhythm weights, tolerance thresholds, confidence cutoffs. It uses real-world test cases extracted from production feedback logs (confirmed user identifications) to find the parameter combination that maximises recognition accuracy.
+
+```bash
+# Extract confirmed cases from production logs
+npx ts-node src/index.ts extract --log "/logs/search-*.log"
+
+# Run OAT sweep against a baseline config
+npx ts-node src/index.ts sweep --baseline configs/baseline.json
+```
+
+### Regression tests
+
+Planned — will run whenever the database is updated with new standards, to catch regressions in recognition accuracy before the changes go live.
+
+---
+
+## Deployment
+
+Jazzam runs on a self-hosted **k3s** cluster. The cluster configuration, manifests, and infrastructure tooling live in a separate repo: [k3aix/aac-k3s](https://github.com/k3aix/aac-k3s).
+
+### Cluster services
+
+Beyond the Jazzam application itself, the cluster runs:
+
+| Service | Purpose |
+|---------|---------|
+| **Rancher** | Cluster management UI |
+| **Longhorn** | Distributed block storage for persistent volumes |
+| **Grafana + Prometheus** | Metrics, dashboards, and alerting |
+| **Docker Registry + UI** | Internal image registry used by CI builds |
+| **Cloudflare Tunnel** | Exposes services to the internet without opening inbound ports |
+
+### Namespaces
+
+| Namespace | Contents |
+|-----------|---------|
+| `jazzam` | Production: frontend, standards service, search service |
+| `jazzam-staging` | Staging: same stack, auto-deployed on every push to `main` |
+
+---
+
+## DevOps & GitOps
+
+### CI — build pipeline
+
+Every push to `main` triggers a GitHub Actions workflow that builds Docker images for all three services using **QEMU-based multi-arch builds** (linux/amd64 + linux/arm64) via a reusable workflow in `aac-k3s`. Images are pushed to the internal registry and tagged with the commit SHA and `:latest`. On success, the staging environment is automatically updated via a `rollout restart`.
+
+### CD — release workflow
+
+Releases are triggered manually from the GitHub Actions UI with a `patch / minor / major` selector. The release workflow:
+
+1. Bumps the `VERSION` file
+2. Re-tags the current `:latest` images as `v<new-version>` using `docker buildx imagetools` (no rebuild)
+3. Deploys to production via `kubectl set image`
+4. Updates the image tags in the `aac-k3s` manifest repo (GitOps)
+5. Commits the new `VERSION` and pushes a git tag
+
+### Staging environment
+
+The staging environment at **[dev.jazzam.it](https://dev.jazzam.it)** is protected by **Cloudflare Zero Trust Access** — access requires an email OTP sent to an approved address. The tunnel runs as a `cloudflared` deployment inside the `jazzam-staging` namespace, routing traffic directly to the frontend service without exposing any cluster port publicly.
+
+### Self-hosted runners
+
+CI jobs run on **ARC (Actions Runner Controller)** pods inside the cluster. Runners are ephemeral: a new pod is spun up for each job and torn down on completion.
