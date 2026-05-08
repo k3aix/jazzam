@@ -35,14 +35,25 @@ jobs:
           echo "current=$current" >> $GITHUB_OUTPUT
           echo "new=$new" >> $GITHUB_OUTPUT
 
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+        with:
+          buildkitd-config-inline: |
+            [dns]
+              nameservers = ["8.8.8.8", "1.1.1.1"]
+            [registry."registry.kube-registry.svc.cluster.local:5000"]
+              http = true
+              insecure = true
+
       - name: Re-tag images as v${{ steps.version.outputs.new }}
         run: |
           NEW=v${{ steps.version.outputs.new }}
-          REGISTRY=localhost:30100
+          INTERNAL=registry.kube-registry.svc.cluster.local:5000
           for svc in jazz-frontend jazz-standards jazz-search; do
             docker buildx imagetools create \
-              -t $REGISTRY/$svc:$NEW \
-              $REGISTRY/$svc:latest
+              -t $INTERNAL/$svc:$NEW \
+              $INTERNAL/$svc:latest
           done
 
       - name: Install kubectl
