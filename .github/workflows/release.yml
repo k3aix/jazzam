@@ -101,15 +101,19 @@ jobs:
 
       - name: Commit VERSION and tag
         env:
-          GITOPS_PAT: ${{ secrets.GITOPS_PAT }}
+          GH_TOKEN: ${{ secrets.GITOPS_PAT }}
         run: |
           NEW=${{ steps.version.outputs.new }}
-          echo "$NEW" > VERSION
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin https://anreapipino:$GITOPS_PAT@github.com/k3aix/jazzam.git
-          git add VERSION
-          git commit -m "chore: release v$NEW"
-          git tag "v$NEW"
-          git push
-          git push --tags
+          # Update VERSION file via API (respects bypass list, no git push needed)
+          CURRENT_SHA=$(gh api repos/k3aix/jazzam/contents/VERSION --jq .sha)
+          gh api repos/k3aix/jazzam/contents/VERSION \
+            --method PUT \
+            -f message="chore: release v$NEW" \
+            -f content="$(printf '%s' "$NEW" | base64)" \
+            -f sha="$CURRENT_SHA"
+          # Create tag via API on the new commit
+          NEW_SHA=$(gh api repos/k3aix/jazzam/git/ref/heads/main --jq .object.sha)
+          gh api repos/k3aix/jazzam/git/refs \
+            --method POST \
+            -f ref="refs/tags/v$NEW" \
+            -f sha="$NEW_SHA"
