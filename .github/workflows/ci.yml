@@ -33,7 +33,10 @@ jobs:
       - name: Install kubectl
         run: |
           curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          install -m 755 kubectl /usr/local/bin/kubectl
+          chmod +x kubectl
+          mkdir -p "$HOME/.local/bin"
+          mv kubectl "$HOME/.local/bin/kubectl"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Rollout restart
         env:
