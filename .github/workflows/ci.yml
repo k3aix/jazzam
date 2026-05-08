@@ -46,4 +46,4 @@ jobs:
             --server=https://kubernetes.default.svc \
             --token="$K8S_TOKEN" \
             --certificate-authority=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
-            rollout restart deployment -n jazzam-staging
+            rollout restart deployment/jazz-frontend deployment/jazz-standards deployment/jazz-search -n jazzam-staging
