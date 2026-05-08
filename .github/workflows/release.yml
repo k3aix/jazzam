@@ -100,11 +100,14 @@ jobs:
           git push
 
       - name: Commit VERSION and tag
+        env:
+          GITOPS_PAT: ${{ secrets.GITOPS_PAT }}
         run: |
           NEW=${{ steps.version.outputs.new }}
           echo "$NEW" > VERSION
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:$GITOPS_PAT@github.com/k3aix/jazzam.git
           git add VERSION
           git commit -m "chore: release v$NEW"
           git tag "v$NEW"
