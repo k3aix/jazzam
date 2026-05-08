@@ -80,7 +80,7 @@ jobs:
           kubectl set image deployment/jazz-frontend jazz-frontend=$REGISTRY/jazz-frontend:$NEW -n jazzam
           kubectl set image deployment/jazz-standards jazz-standards=$REGISTRY/jazz-standards:$NEW -n jazzam
           kubectl set image deployment/jazz-search jazz-search=$REGISTRY/jazz-search:$NEW -n jazzam
-          kubectl rollout status deployment -n jazzam --timeout=120s
+          kubectl rollout status deployment/jazz-frontend deployment/jazz-standards deployment/jazz-search -n jazzam --timeout=120s
 
       - name: Update manifests in aac-k3s
         env:
